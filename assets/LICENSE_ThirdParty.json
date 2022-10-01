@@ -1,0 +1,38 @@
+[
+  {
+    "License": "PSF License",
+    "Name": "Python",
+    "Version": "3.9.13",
+    "Link":   "https://docs.python.org/3/license.html#psf-license"
+  },
+  {
+    "License": "BSD License",
+    "Name": "numpy",
+    "Version": "1.23.0",
+    "Link":   "https://github.com/numpy/numpy/blob/main/LICENSE.txt"
+  },
+  {
+    "License": "MIT License",
+    "Name": "opencv-python",
+    "Version": "4.5.5.64",
+    "Link":   "https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt"
+  },
+  {
+    "License": "HPND",
+    "Name": "Pillow",
+    "Version": "9.2.0",
+    "Link":   "https://github.com/python-pillow/Pillow/blob/main/LICENSE"
+  },
+  {
+    "License": "MIT License",
+    "Name": "ttkbootstrap",
+    "Version": "1.9.0",
+    "Link":   "https://github.com/israel-dryer/ttkbootstrap/blob/master/LICENSE"
+  },
+  {
+    "License": "MIT License",
+    "Name": "windows-capture-device-list",
+    "Version": "1.1.0",
+    "Link":   "https://github.com/yushulx/python-capture-device-list/blob/master/LICENSE"
+  }
+]

@@ -1,0 +1,7 @@
+{
+    "python.linting.enabled": true,
+    "python.autoComplete.extraPaths": [
+    "./src",
+    "./env/Lib/site-packages/",
+    ],
+}

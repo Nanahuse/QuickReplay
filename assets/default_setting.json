@@ -1,0 +1,12 @@
+{
+    "webcamera": {
+        "frame_rate": 60,
+        "input_device": "",
+        "resolution": ""
+    },
+    "replay": {
+        "auto_restart": 120,
+        "length": 600,
+        "recording_preview": true
+    }
+}

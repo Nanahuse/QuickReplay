@@ -1,0 +1,8 @@
+__pycache__
+*/__pycache__/*
+tmp_video/*.mp4
+dist/*
+build/*
+*.spec
+env/*
+config.json
