@@ -2,6 +2,10 @@
     "python.linting.enabled": true,
     "python.autoComplete.extraPaths": [
     "./src",
-    "./env/Lib/site-packages/",
+    "./venv/Lib/site-packages/",
+    ],
+    "python.analysis.extraPaths": [
+        "./src",
+        "./venv/Lib/site-packages/"
     ],
 }

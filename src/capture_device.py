@@ -4,46 +4,31 @@
 
 
 from dataclasses import dataclass
-from typing import List
 
-import device  # https://github.com/yushulx/python-capture-device-list
+import device
 
-
-@dataclass
-class Resolution(object):
-    x: int
-    y: int
-
-    def to_string(self) -> str:
-        return f"{self.x} x {self.y}"
+from resolution import Resolution
 
 
-@dataclass
+@dataclass(frozen=True)
 class CaptureDevice(object):
     device_num: int
     name: str
-    resolution: List[Resolution]
+    resolution: tuple[Resolution, ...]
 
 
-def get_devices() -> List[CaptureDevice]:
-    try:
-        device_list = device.getDeviceList()
-    except:
-        # デバッグ実行時にエラーになってしまうため
-        device_list = [
-            ("これはサンプルです", [(1920, 1080), (1280, 720), (960, 540), (640, 360)]),
-            ("Debug2", [(1920, 1080), (1280, 720), (960, 540)]),
-            ("Debug3", [(1920, 1080), (1280, 720), (640, 360)]),
-            ("Debug4", [(960, 540), (640, 360)]),
-            ("Debug5", [(1920, 1080), (1280, 720), (960, 540)]),
-            ("Debug6", [(1920, 1080), (1280, 720), (960, 540)]),
-        ]
+def get_devices() -> tuple[CaptureDevice, ...]:
+    device_list = device.getDeviceList()
 
-    return [
+    return tuple(
         CaptureDevice(
             device_num,
             capture_device[0],
-            [Resolution(resolution[0], resolution[1]) for resolution in capture_device[1]],
+            tuple(Resolution(resolution[0], resolution[1]) for resolution in capture_device[1]),
         )
         for device_num, capture_device in enumerate(device_list)
-    ]
+    )
+
+
+if __name__ == "__main__":
+    print(get_devices())

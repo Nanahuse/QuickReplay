@@ -6,3 +6,5 @@ build/*
 *.spec
 env/*
 config.json
+
+venv
