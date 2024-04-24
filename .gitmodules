@@ -1,0 +1,6 @@
+[submodule "extern/ndi-python"]
+	path = extern/ndi-python
+	url = https://github.com/Nanahuse/ndi-python
+[submodule "extern/python-capture-device-list"]
+	path = extern/python-capture-device-list
+	url = https://github.com/yushulx/python-capture-device-list
