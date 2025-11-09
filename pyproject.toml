@@ -1,0 +1,15 @@
+[project]
+name = "QuickReplay"
+version = "2.0.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "opencv-python>=4.12.0.88",
+    "ttkbootstrap>=1.18.1",
+    "windows-camera-enum>=1.0.4",
+]
+license = { file = "LICENSE" }
+
+[dependency-groups]
+dev = ["pyinstaller>=6.16.0"]
