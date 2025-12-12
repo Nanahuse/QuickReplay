@@ -21,7 +21,3 @@ https://fedoraproject.org/wiki/Licensing:TCL
 # ttkbootstrap
 MIT License  
 https://github.com/israel-dryer/ttkbootstrap/blob/master/LICENSE
-
-# windows-capture-device-list (python-capture-device-list)
-MIT License  
-https://github.com/yushulx/python-capture-device-list/blob/master/LICENSE
