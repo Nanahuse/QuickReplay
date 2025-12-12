@@ -7,9 +7,35 @@ requires-python = ">=3.13"
 dependencies = [
     "opencv-python>=4.12.0.88",
     "ttkbootstrap>=1.18.1",
-    "windows-camera-enum>=1.0.4",
+    "windows-capture-device-list",
 ]
 license = { file = "LICENSE" }
 
 [dependency-groups]
-dev = ["pyinstaller>=6.16.0"]
+dev = ["pyinstaller>=6.16.0", "pytest>=9.0.1", "ruff>=0.14.4", "ty>=0.0.1a25"]
+
+[tool.ruff]
+line-length = 120
+lint.fixable = ["ALL"]
+lint.select = ["ALL"]
+lint.ignore = [
+    "A002",
+    "EM101",
+    "EM102",
+    "FIX002",
+    "S101",
+    "TRY003",
+    "TRY300",
+    "COM812",
+    "RUF002",
+    "D",
+    "TD",
+]
+
+
+[tool.ruff.per-file-ignores]
+"test/*" = ["INP001", "PLR2004", "SLF001"]
+"debug/*" = ["INP001", "T201"]
+
+[tool.uv.sources]
+windows-capture-device-list = { git = "https://github.com/Nanahuse/windows-capture-device-list.git" }
