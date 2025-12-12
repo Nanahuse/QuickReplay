@@ -1,0 +1,18 @@
+# https://taskfile.dev
+
+version: '3'
+
+
+tasks:
+  debug-get-devices:
+    cmds:
+      - uv run debug/get_devices.py
+    desc: "Debug: Get capture devices"
+  debug-check-capture:
+    cmds:
+      - uv run debug/check_capture.py
+    desc: "Debug: Capture from a device"
+  debug-check-writer:
+    cmds:
+      - uv run debug/check_writer.py
+    desc: "Debug: Check video writer"
