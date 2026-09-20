@@ -10,9 +10,11 @@ Video payload contract
     * ``RGB24`` / ``BGR24`` -- ``(height, width, 3)``
     * ``RGBA`` / ``BGRA``    -- ``(height, width, 4)``
     * ``GRAY8``              -- ``(height, width)``
+    * ``UYVY``               -- ``(height, width * 2)`` packed 4:2:2 (NDI)
 
-    NDI-specific packed formats (for example UYVY) are intentionally not
-    handled in this phase.
+    The packed ``UYVY`` payload is written straight into a PyAV ``uyvy422``
+    frame and reformatted to ``yuv420p``, so no intermediate RGB conversion is
+    performed.
 
 Audio payload contract
     ``AudioFrame.data`` is a :class:`numpy.ndarray` of ``float32`` with shape
@@ -36,6 +38,8 @@ _VIDEO_FORMATS: dict[str, tuple[str, int]] = {
 
 _AUDIO_LAYOUTS = {1: "mono", 2: "stereo"}
 
+_UYVY_FORMAT = "uyvy422"
+
 
 class FrameConverter:
     """Convert domain frames into PyAV frames.
@@ -45,16 +49,19 @@ class FrameConverter:
 
     def to_av_video(self, frame: VideoFrame) -> av.VideoFrame:
         """Build a ``yuv420p`` PyAV frame from a domain video frame."""
-        entry = _VIDEO_FORMATS.get(frame.pixel_format.upper())
-        if entry is None:
-            raise SegmentFormatError(
-                f"unsupported pixel format {frame.pixel_format!r}; "
-                f"supported: {sorted(_VIDEO_FORMATS)}"
-            )
-        av_format, components = entry
+        pixel_format = frame.pixel_format.upper()
         data = frame.data
         if not isinstance(data, np.ndarray):
             raise SegmentFormatError("VideoFrame.data must be a numpy.ndarray")
+        if pixel_format == "UYVY":
+            return self._uyvy_to_av_video(frame, data)
+        entry = _VIDEO_FORMATS.get(pixel_format)
+        if entry is None:
+            raise SegmentFormatError(
+                f"unsupported pixel format {frame.pixel_format!r}; "
+                f"supported: {sorted([*_VIDEO_FORMATS, 'UYVY'])}"
+            )
+        av_format, components = entry
         expected = (
             (frame.height, frame.width)
             if components == 1
@@ -68,6 +75,33 @@ class FrameConverter:
         if data.dtype != np.uint8:
             raise SegmentFormatError(f"VideoFrame.data dtype must be uint8, got {data.dtype}")
         av_frame = av.VideoFrame.from_ndarray(np.ascontiguousarray(data), format=av_format)
+        return av_frame.reformat(format="yuv420p")
+
+    def _uyvy_to_av_video(self, frame: VideoFrame, data: np.ndarray) -> av.VideoFrame:
+        """Write a packed UYVY payload into a ``uyvy422`` frame and reformat it.
+
+        PyAV cannot build packed YUV frames from a numpy array, so the payload
+        is copied into the frame's first plane directly.  The result is
+        converted to ``yuv420p`` for the encoder without an RGB round trip.
+        """
+        expected = (frame.height, frame.width * 2)
+        if data.shape != expected:
+            raise SegmentFormatError(
+                f"VideoFrame.data shape {data.shape} does not match {expected} for UYVY"
+            )
+        if data.dtype != np.uint8:
+            raise SegmentFormatError(f"VideoFrame.data dtype must be uint8, got {data.dtype}")
+        av_frame = av.VideoFrame(frame.width, frame.height, format=_UYVY_FORMAT)
+        plane = av_frame.planes[0]
+        row_bytes = frame.width * 2
+        if plane.line_size == row_bytes:
+            buffer = np.ascontiguousarray(data)
+        else:
+            # PyAV may align the line size beyond width * 2; pad each row.
+            buffer = np.zeros((frame.height, plane.line_size), dtype=np.uint8)
+            buffer[:, :row_bytes] = data
+        # PyAV's stub types ``update`` as ``bytes`` but accepts any buffer.
+        plane.update(buffer)  # ty: ignore[invalid-argument-type]
         return av_frame.reformat(format="yuv420p")
 
     def to_av_audio(self, data: np.ndarray, sample_rate: int, channels: int) -> av.AudioFrame:
