@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - feature/version2
-      - feature/v2-bootstrap
   pull_request:
     branches:
       - feature/version2
@@ -27,6 +26,9 @@ jobs:
 
       - name: Lint
         run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
 
       - name: Type check
         run: uv run ty check
