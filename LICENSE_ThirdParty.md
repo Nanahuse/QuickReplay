@@ -25,3 +25,11 @@ https://github.com/israel-dryer/ttkbootstrap/blob/master/LICENSE
 # windows-capture-device-list (python-capture-device-list)
 MIT License  
 https://github.com/yushulx/python-capture-device-list/blob/master/LICENSE
+
+# ndi-python
+MIT License  
+https://github.com/buresu/ndi-python/blob/master/LICENSE
+
+# NDI SDK (bundled by ndi-python)
+NDI SDK License  
+https://ndi.video/for-developers/ndi-sdk/license/
