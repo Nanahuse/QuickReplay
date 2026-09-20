@@ -5,8 +5,14 @@ raw library exceptions.  Mapping to :class:`~quickreplay.recording.models.Worker
 happens in a later phase.
 """
 
+from pathlib import Path
 
-class SegmentRecorderError(RuntimeError):
+
+class RecordingError(RuntimeError):
+    """Base class for recording component errors."""
+
+
+class SegmentRecorderError(RecordingError):
     """Base class for segment recording errors."""
 
 
@@ -24,3 +30,19 @@ class SegmentEncodingError(SegmentRecorderError):
 
 class SegmentMuxError(SegmentRecorderError):
     """Writing or finalizing a segment container failed."""
+
+
+class RingStorageError(RecordingError):
+    """Base class for ring storage errors."""
+
+
+class SegmentOrderError(RingStorageError):
+    """A segment was added out of chronological order or with a duplicate id."""
+
+
+class SegmentDeleteError(RingStorageError):
+    """Deleting one or more expired segment files failed."""
+
+    def __init__(self, paths: tuple[Path, ...]) -> None:
+        super().__init__(f"failed to delete {len(paths)} segment file(s): {paths}")
+        self.paths = paths
