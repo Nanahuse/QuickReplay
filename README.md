@@ -4,9 +4,9 @@ QuickReplay Version 2 is under development.
 
 Version 2 is a rewrite of QuickReplay.  The previous Version 1 implementation
 has been removed from this repository.  The core domain model, the segment
-recording core and the ring storage / retention core are implemented.  Input
-sources (NDI / Camera), replay asset building and the UI are not implemented
-yet.
+recording core, the ring storage / retention core and the replay asset
+(stream-copy remux) core are implemented.  Input sources (NDI / Camera), replay
+playback / control and the UI are not implemented yet.
 
 ## Requirements
 
@@ -58,7 +58,7 @@ src/
    ├─ app/          # application state and view models
    ├─ input/        # input config, stream info and frame models
    ├─ recording/    # segment/session models, segment recorder, worker protocol
-   ├─ replay/       # replay snapshot, asset and set-point models
+   ├─ replay/       # replay snapshot/asset models and the replay asset builder
    └─ units.py      # nanosecond / Fraction helpers
 tests/
 pyproject.toml
