@@ -18,6 +18,7 @@ from quickreplay.input.models import (
     VideoStreamInfo,
 )
 from quickreplay.recording.models import RecordingSession, Segment
+from quickreplay.recording.segment_recorder import SegmentRecorder
 from quickreplay.units import NANOSECONDS_PER_SECOND, round_fraction
 
 _VIDEO_COMPONENTS = {"RGB24": 3, "BGR24": 3, "RGBA": 4, "BGRA": 4, "GRAY8": 1}
@@ -173,6 +174,55 @@ def make_segment(tmp_path: Path) -> Callable[..., Segment]:
     return _make
 
 
+@pytest.fixture
+def record_segments(media: MediaFactory) -> Callable[..., tuple[tuple[Segment, ...], StreamInfo]]:
+    """Record synthetic frames into finalized segments plus their stream info."""
+
+    def _record(
+        directory: Path,
+        *,
+        duration_ns: int,
+        fps: Fraction,
+        width: int,
+        height: int,
+        pixel_format: str = "RGB24",
+        sample_rate: int | None = None,
+        channels: int | None = None,
+        segment_duration_ns: int = 2_000_000_000,
+    ) -> tuple[tuple[Segment, ...], StreamInfo]:
+        stream_info = media.stream_info(
+            fps=fps,
+            width=width,
+            height=height,
+            pixel_format=pixel_format,
+            sample_rate=sample_rate,
+            channels=channels,
+        )
+        recorder = SegmentRecorder(segment_duration_ns=segment_duration_ns)
+        recorder.start(media.session(directory, stream_info))
+        segments: list[Segment] = []
+        for frame in media.frames(
+            duration_ns=duration_ns,
+            fps=fps,
+            width=width,
+            height=height,
+            pixel_format=pixel_format,
+            sample_rate=sample_rate,
+            channels=channels,
+        ):
+            if isinstance(frame, VideoFrame):
+                segments.extend(recorder.push_video(frame))
+            else:
+                recorder.push_audio(frame)
+        last = recorder.finish()
+        if last is not None:
+            segments.append(last)
+        recorder.close()
+        return tuple(segments), stream_info
+
+    return _record
+
+
 @dataclass(frozen=True)
 class SegmentProbe:
     """Facts read back from a written segment file."""
@@ -276,3 +326,97 @@ def probe_segment(path: Path) -> SegmentProbe:
 @pytest.fixture
 def probe() -> Callable[[Path], SegmentProbe]:
     return probe_segment
+
+
+@dataclass(frozen=True)
+class ReplayProbe:
+    """Facts read back from a built replay asset."""
+
+    video_codec: str
+    video_time_base: Fraction | None
+    video_rate: Fraction | None
+    video_packet_pts: tuple[int, ...]
+    video_packet_dts: tuple[int, ...]
+    keyframe_pts: tuple[int, ...]
+    decoded_video_pts: tuple[int, ...]
+    audio_codec: str | None
+    audio_sample_rate: int | None
+    audio_channels: int | None
+    audio_packet_pts: tuple[int, ...]
+    audio_packet_dts: tuple[int, ...]
+    decoded_audio_samples: int
+
+
+def probe_replay(path: Path) -> ReplayProbe:
+    """Open a replay asset and read packet, keyframe and decode facts."""
+    path = Path(path)
+    with av.open(str(path)) as container:
+        video = container.streams.video[0]
+        video_codec = video.codec_context.name
+        video_time_base = video.time_base
+        video_rate = video.average_rate
+        video_pts: list[int] = []
+        video_dts: list[int] = []
+        keyframe_pts: list[int] = []
+        for packet in container.demux(video):
+            if packet.dts is None or packet.pts is None:
+                continue
+            video_pts.append(packet.pts)
+            video_dts.append(packet.dts)
+            if packet.is_keyframe:
+                keyframe_pts.append(packet.pts)
+        audio_present = bool(container.streams.audio)
+
+    with av.open(str(path)) as container:
+        decoded_video_pts = tuple(
+            frame.pts
+            for frame in container.decode(container.streams.video[0])
+            if frame.pts is not None
+        )
+
+    audio_codec: str | None = None
+    audio_sample_rate: int | None = None
+    audio_channels: int | None = None
+    audio_pts: tuple[int, ...] = ()
+    audio_dts: tuple[int, ...] = ()
+    decoded_audio_samples = 0
+    if audio_present:
+        with av.open(str(path)) as container:
+            audio = container.streams.audio[0]
+            audio_codec = audio.codec_context.name
+            audio_sample_rate = audio.codec_context.sample_rate
+            audio_channels = audio.codec_context.channels
+            pts: list[int] = []
+            dts: list[int] = []
+            for packet in container.demux(audio):
+                if packet.dts is None or packet.pts is None:
+                    continue
+                pts.append(packet.pts)
+                dts.append(packet.dts)
+            audio_pts = tuple(pts)
+            audio_dts = tuple(dts)
+        with av.open(str(path)) as container:
+            decoded_audio_samples = sum(
+                frame.samples for frame in container.decode(container.streams.audio[0])
+            )
+
+    return ReplayProbe(
+        video_codec=video_codec,
+        video_time_base=video_time_base,
+        video_rate=video_rate,
+        video_packet_pts=tuple(video_pts),
+        video_packet_dts=tuple(video_dts),
+        keyframe_pts=tuple(keyframe_pts),
+        decoded_video_pts=decoded_video_pts,
+        audio_codec=audio_codec,
+        audio_sample_rate=audio_sample_rate,
+        audio_channels=audio_channels,
+        audio_packet_pts=audio_pts,
+        audio_packet_dts=audio_dts,
+        decoded_audio_samples=decoded_audio_samples,
+    )
+
+
+@pytest.fixture
+def replay_probe() -> Callable[[Path], ReplayProbe]:
+    return probe_replay
