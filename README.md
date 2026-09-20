@@ -3,9 +3,10 @@
 QuickReplay Version 2 is under development.
 
 Version 2 is a rewrite of QuickReplay.  The previous Version 1 implementation
-has been removed from this repository.  The core domain model and the segment
-recording core are under implementation.  Input sources (NDI / Camera), ring
-storage, replay and the UI are not implemented yet.
+has been removed from this repository.  The core domain model, the segment
+recording core and the ring storage / retention core are implemented.  Input
+sources (NDI / Camera), replay asset building and the UI are not implemented
+yet.
 
 ## Requirements
 

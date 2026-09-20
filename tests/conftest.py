@@ -17,7 +17,7 @@ from quickreplay.input.models import (
     VideoFrame,
     VideoStreamInfo,
 )
-from quickreplay.recording.models import RecordingSession
+from quickreplay.recording.models import RecordingSession, Segment
 from quickreplay.units import NANOSECONDS_PER_SECOND, round_fraction
 
 _VIDEO_COMPONENTS = {"RGB24": 3, "BGR24": 3, "RGBA": 4, "BGRA": 4, "GRAY8": 1}
@@ -152,6 +152,25 @@ class MediaFactory:
 @pytest.fixture
 def media() -> MediaFactory:
     return MediaFactory()
+
+
+@pytest.fixture
+def make_segment(tmp_path: Path) -> Callable[..., Segment]:
+    """Create a finalized-looking segment with a real (dummy) file."""
+
+    def _make(segment_id: int, start_ns: int, end_ns: int) -> Segment:
+        path = tmp_path / f"segment_{segment_id:06d}.mkv"
+        path.write_bytes(b"segment")
+        return Segment(
+            id=segment_id,
+            path=path,
+            session_start_ns=start_ns,
+            session_end_ns=end_ns,
+            video_frames=120,
+            audio_samples=96000,
+        )
+
+    return _make
 
 
 @dataclass(frozen=True)
