@@ -47,6 +47,21 @@ wheels = [
 ]
 
 [[package]]
+name = "ndi-python"
+version = "6.3.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/c2/af784f75a3b500b0b63cae6b598258c03c32e75c7cba22e9a7b53e027525/ndi_python-6.3.2.4-cp314-cp314-macosx_13_0_arm64.whl", hash = "sha256:f512fffde3ab0be5ff02ea1e6f1aa22020bbdb25d58d9fc7c551d1c362364555", size = 4868751, upload-time = "2026-09-07T11:36:19.436Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/2f/9fdaa3b51c297c52138031916093baef96855c868a0656ededb14a00138b/ndi_python-6.3.2.4-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6c933207fd34a145cb8326287af3947095c9bd6f82a615f208ae72de773d20a7", size = 5731079, upload-time = "2026-09-07T11:36:21.761Z" },
+    { url = "https://files.pythonhosted.org/packages/30/37/9493a4ac846edb31e00fd4f237947f96621e0b44f9e1a4edcd481e0751de/ndi_python-6.3.2.4-cp314-cp314-manylinux_2_26_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:cb022fceae8c6001fe9c5f7b9bee9ee134420d30667152f06cd4d8d6b003856d", size = 5662574, upload-time = "2026-09-07T11:36:23.745Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/14/53a6ffa6fa1966b8e93d61dcc8893c4111dc163e185c0bf74b008685fb50/ndi_python-6.3.2.4-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:69e3d0ef9c1f60a64584214997dc0bac432c65256805e68a9f7842301b930c82", size = 10401289, upload-time = "2026-09-07T11:36:26.286Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/ed/90c175c94a8a32750ad4aadc3254bdea0c54caf85007fc47d1ab76251f40/ndi_python-6.3.2.4-cp314-cp314-win_amd64.whl", hash = "sha256:e9654efddc936247c5e1abbb09ed39e719206e49bd33a09aa019a3cc8b4deef6", size = 4779158, upload-time = "2026-09-07T11:36:28.814Z" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.5.3"
 source = { registry = "https://pypi.org/simple" }
@@ -146,6 +161,7 @@ version = "2.0.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "av" },
+    { name = "ndi-python" },
     { name = "numpy" },
 ]
 
@@ -159,6 +175,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "av", specifier = ">=18.1.0" },
+    { name = "ndi-python", specifier = "==6.3.2.4" },
     { name = "numpy", specifier = ">=2.5.3" },
 ]
 
