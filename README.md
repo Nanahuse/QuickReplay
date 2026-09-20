@@ -5,8 +5,8 @@ QuickReplay Version 2 is under development.
 Version 2 is a rewrite of QuickReplay.  The previous Version 1 implementation
 has been removed from this repository.  The core domain model, the segment
 recording core, the ring storage / retention core, the replay asset
-(stream-copy remux) core and the NDI input core are implemented.  Camera input,
-replay playback / control and the UI are not implemented yet.
+(stream-copy remux) core, the NDI input core and the camera input core are
+implemented.  Replay playback / control and the UI are not implemented yet.
 
 ## Requirements
 
@@ -57,7 +57,8 @@ src/
 └─ quickreplay/
    ├─ app/          # application state and view models
    ├─ input/        # input config, stream info, frame models, InputSource
-   │  └─ ndi/       # NDI discovery, receiver and frame conversion
+   │  ├─ ndi/       # NDI discovery, receiver and frame conversion
+   │  └─ camera/    # camera discovery, OpenCV capture and frame conversion
    ├─ recording/    # segment/session models, segment recorder, worker protocol
    ├─ replay/       # replay snapshot/asset models and the replay asset builder
    └─ units.py      # nanosecond / Fraction helpers
