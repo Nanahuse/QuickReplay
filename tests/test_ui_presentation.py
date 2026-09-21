@@ -121,6 +121,21 @@ def test_control_state() -> None:
     assert not discovering.refresh_enabled
 
 
+def test_control_state_settings_enabled_except_when_shutting_down() -> None:
+    for state in (
+        ApplicationState.IDLE,
+        ApplicationState.RECORDING,
+        ApplicationState.REPLAY,
+        ApplicationState.ERROR,
+    ):
+        assert control_state(state, has_selection=True, discovering=False).settings_enabled
+
+    shutting_down = control_state(
+        ApplicationState.SHUTTING_DOWN, has_selection=True, discovering=False
+    )
+    assert not shutting_down.settings_enabled
+
+
 def test_camera_backend_options() -> None:
     assert camera_backend_options("win32") == ("any", "msmf", "dshow")
     assert camera_backend_options("linux") == ("any", "v4l2")
