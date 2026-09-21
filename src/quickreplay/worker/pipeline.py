@@ -378,8 +378,8 @@ class RecordingPipeline:
                 self._add_segment(ring, segment)
             self._increment("recorded_video_frames", 1)
             return
-        recorder.push_audio(item)
-        self._increment("recorded_audio_samples", item.sample_count)
+        accepted_samples = recorder.push_audio(item)
+        self._increment("recorded_audio_samples", accepted_samples)
 
     def _add_segment(self, ring: RingStorage, segment: Segment) -> None:
         ring.add(segment)

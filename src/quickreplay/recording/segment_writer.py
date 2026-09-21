@@ -134,20 +134,39 @@ class SegmentWriter:
             raise SegmentEncodingError("writer is closed")
         if self._audio_stream is None:
             raise SegmentEncodingError("segment has no audio stream")
+        audio = self.stream_info.audio
+        assert audio is not None
+        sample_count = int(data.shape[1])
+        time_base = self._audio_time_base
         try:
-            audio = self.stream_info.audio
-            assert audio is not None
             av_frame = self._converter.to_av_audio(data, audio.sample_rate, audio.channels)
             av_frame.pts = pts
-            av_frame.time_base = self._audio_time_base
-            for packet in self._audio_stream.encode(av_frame):
+            av_frame.time_base = time_base
+            packets = list(self._audio_stream.encode(av_frame))
+        except SegmentRecorderError:
+            self.abort()
+            raise
+        except Exception as exc:  # noqa: BLE001 - wrap any PyAV failure
+            self.abort()
+            raise SegmentEncodingError(
+                "audio encode failed "
+                f"(segment_id={self.segment_id}, pts={pts}, sample_count={sample_count}, "
+                f"time_base={time_base}): {exc}"
+            ) from exc
+        try:
+            for packet in packets:
                 self._container.mux(packet)
         except SegmentRecorderError:
             self.abort()
             raise
         except Exception as exc:  # noqa: BLE001 - wrap any PyAV failure
             self.abort()
-            raise SegmentEncodingError(f"audio encode failed: {exc}") from exc
+            raise SegmentEncodingError(
+                "audio mux failed "
+                f"(segment_id={self.segment_id}, pts={pts}, sample_count={sample_count}, "
+                f"time_base={time_base}, packet_pts={packet.pts}, packet_dts={packet.dts}, "
+                f"packet_duration={packet.duration}, packet_time_base={packet.time_base}): {exc}"
+            ) from exc
 
     # -- lifecycle ---------------------------------------------------------
     def finalize(self) -> Path:

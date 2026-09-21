@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from quickreplay.input.models import AudioFrame, VideoFrame
+from quickreplay.input.models import AudioFrame, StreamInfo, VideoFrame
 from quickreplay.recording.errors import SegmentFormatError
 from quickreplay.recording.models import Segment
 from quickreplay.recording.segment_recorder import SegmentRecorder
@@ -13,6 +13,25 @@ from quickreplay.recording.segment_recorder import SegmentRecorder
 SAMPLE_RATE = 48000
 CHANNELS = 2
 FPS = Fraction(60, 1)
+
+
+class _AudioCaptureWriter:
+    def __init__(self, segment_id: int, directory: Path, _stream_info: StreamInfo) -> None:
+        self.path = directory / f"segment_{segment_id:06d}.mkv"
+        self.audio_writes: list[tuple[int, int]] = []
+
+    def write_video(self, frame: VideoFrame, pts: int) -> None:
+        pass
+
+    def write_audio(self, data, pts: int) -> None:
+        self.audio_writes.append((pts, int(data.shape[1])))
+
+    def finalize(self) -> Path:
+        self.path.write_bytes(b"segment")
+        return self.path
+
+    def abort(self) -> None:
+        self.path.unlink(missing_ok=True)
 
 
 def _push_audio_range(media, recorder: SegmentRecorder, start_sample: int, end_sample: int) -> None:
@@ -60,6 +79,53 @@ def test_audio_split_is_sample_exact(media, tmp_path: Path) -> None:
     assert segments[0].audio_samples == 96000
     assert segments[1].audio_samples == 96000
     assert sum(segment.audio_samples for segment in segments) == 192000
+
+
+def test_audio_overlap_is_trimmed_and_duplicate_is_dropped(media, tmp_path: Path) -> None:
+    info = media.stream_info(
+        fps=FPS, width=64, height=36, sample_rate=SAMPLE_RATE, channels=CHANNELS
+    )
+    writers: list[_AudioCaptureWriter] = []
+
+    def factory(segment_id: int, directory: Path, stream_info: StreamInfo) -> _AudioCaptureWriter:
+        writer = _AudioCaptureWriter(segment_id, directory, stream_info)
+        writers.append(writer)
+        return writer
+
+    recorder = SegmentRecorder(writer_factory=factory)
+    recorder.start(media.session(tmp_path, info))
+    recorder.push_video(media.video(index=0, fps=FPS, width=64, height=36))
+
+    assert (
+        recorder.push_audio(
+            media.audio(start_sample=0, sample_rate=SAMPLE_RATE, channels=2, count=1024)
+        )
+        == 1024
+    )
+    assert (
+        recorder.push_audio(
+            media.audio(start_sample=1023, sample_rate=SAMPLE_RATE, channels=2, count=1024)
+        )
+        == 1023
+    )
+    assert (
+        recorder.push_audio(
+            media.audio(start_sample=1500, sample_rate=SAMPLE_RATE, channels=2, count=100)
+        )
+        == 0
+    )
+    assert (
+        recorder.push_audio(
+            media.audio(start_sample=2100, sample_rate=SAMPLE_RATE, channels=2, count=100)
+        )
+        == 100
+    )
+
+    recorder.push_video(media.video_at(timestamp_ns=1_000_000_000, fps=FPS, width=64, height=36))
+    recorder.finish()
+    recorder.close()
+
+    assert writers[0].audio_writes == [(0, 1024), (1024, 1023), (2100, 100)]
 
 
 def test_audio_continuity_and_local_pts(media, tmp_path: Path, probe) -> None:
