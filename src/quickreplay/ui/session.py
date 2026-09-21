@@ -6,6 +6,7 @@ correlation, transient status) and drives the application through
 imports so it can be tested headlessly.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Protocol
@@ -46,6 +47,14 @@ from quickreplay.ui.presentation import (
     format_stream_info,
     metrics_view,
     state_label,
+)
+from quickreplay.ui.settings import (
+    SettingsApplyResult,
+    SettingsDraft,
+    apply_message,
+    build_settings_config,
+    draft_from_config,
+    restart_required,
 )
 
 NDI_KIND = "ndi"
@@ -197,6 +206,7 @@ class UiSession:
         self._time_difference_ns: int | None = None
         self._frame_difference: int | None = None
         self._replay_action_pending = False
+        self._settings_applying = False
 
     # -- queries -----------------------------------------------------------
     @property
@@ -326,6 +336,41 @@ class UiSession:
     def note_error(self, message: str) -> None:
         """Record a UI-side error (for example a failed poll iteration)."""
         self._error = message
+
+    # -- settings ----------------------------------------------------------
+    def settings_draft(self) -> SettingsDraft:
+        """Snapshot the persisted config and current selection into a draft."""
+        return draft_from_config(self._config, camera_input=self.build_input_config())
+
+    async def apply_settings(self, draft: SettingsDraft) -> SettingsApplyResult:
+        """Validate and persist *draft*, replacing the session config on success.
+
+        The candidate configuration is written first and the in-memory config is
+        only replaced after the store write succeeded, so a failed save never
+        leaves the session pointing at an unsaved configuration.  Camera mode
+        changes are picked up by :meth:`build_input_config` for the next start.
+        """
+        if self._settings_applying:
+            return SettingsApplyResult(ok=False, message="Settings are already being applied")
+        self._settings_applying = True
+        try:
+            validation = build_settings_config(
+                draft, self._config, camera_input=self.build_input_config()
+            )
+            if validation.config is None:
+                return SettingsApplyResult(ok=False, errors=validation.errors)
+            candidate = validation.config
+            restart = restart_required(self._config, candidate)
+            input_changed = self._config.input != candidate.input
+            try:
+                await asyncio.to_thread(self._store.save, candidate)
+            except ConfigurationError as exc:
+                return SettingsApplyResult(ok=False, message=f"Could not save settings: {exc}")
+            self._config = candidate
+            self._status = apply_message(restart=restart, input_changed=input_changed)
+            return SettingsApplyResult(ok=True, restart_required=restart, message=self._status)
+        finally:
+            self._settings_applying = False
 
     # -- replay actions ----------------------------------------------------
     async def toggle_play_pause(self) -> None:

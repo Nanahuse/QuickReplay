@@ -21,6 +21,7 @@ from quickreplay.ui.session import (
     UiSession,
     UiViewState,
 )
+from quickreplay.ui.settings import SettingsDraft
 
 POLL_INTERVAL_SECONDS = 0.1
 POLL_INTERVAL_REPLAY_SECONDS = 0.05
@@ -150,6 +151,67 @@ class MainView:
             visible=False,
         )
 
+        # Settings dialog (Flet-independent draft + validation live in the session).
+        self._settings_camera_available = False
+        self.settings_header_button = ft.FilledButton(
+            content="Settings", on_click=self._on_settings_open
+        )
+        self.settings_camera_label = ft.Text("", italic=True, color=ft.Colors.BLUE_GREY)
+        self.settings_camera_hint = ft.Text("Select a camera input to edit its capture mode.")
+        self.settings_explicit_checkbox = ft.Checkbox(
+            label="Use explicit camera mode",
+            value=False,
+            on_change=self._on_settings_explicit_change,
+        )
+        self.settings_width_field = ft.TextField(label="Width", width=150)
+        self.settings_height_field = ft.TextField(label="Height", width=150)
+        self.settings_numerator_field = ft.TextField(label="Numerator", width=150)
+        self.settings_denominator_field = ft.TextField(label="Denominator", width=150)
+        self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
+        self.settings_mpv_field = ft.TextField(label="mpv executable", width=380)
+        self.settings_error_text = ft.Text("", color=ft.Colors.RED)
+        self.settings_cancel_button = ft.TextButton(
+            content="Cancel", on_click=self._on_settings_cancel
+        )
+        self.settings_apply_button = ft.FilledButton(
+            content="Apply", on_click=self._on_settings_apply
+        )
+        self.settings_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Settings"),
+            content=ft.Column(
+                controls=[
+                    ft.Text("Camera", weight=ft.FontWeight.BOLD),
+                    self.settings_camera_label,
+                    self.settings_explicit_checkbox,
+                    self.settings_camera_hint,
+                    ft.Row(controls=[self.settings_width_field, self.settings_height_field]),
+                    ft.Row(
+                        controls=[
+                            self.settings_numerator_field,
+                            ft.Text("/"),
+                            self.settings_denominator_field,
+                        ]
+                    ),
+                    ft.Divider(),
+                    ft.Text("Recording", weight=ft.FontWeight.BOLD),
+                    ft.Row(controls=[self.settings_buffer_field, ft.Text("seconds")]),
+                    ft.Text("Restart required after changing", italic=True),
+                    ft.Divider(),
+                    ft.Text("Replay", weight=ft.FontWeight.BOLD),
+                    self.settings_mpv_field,
+                    ft.Text("Restart required after changing", italic=True),
+                    self.settings_error_text,
+                ],
+                spacing=8,
+                tight=True,
+                width=460,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            actions=[self.settings_cancel_button, self.settings_apply_button],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
         self.status_text = ft.Text("", color=ft.Colors.BLUE_GREY)
         self.error_text = ft.Text("", color=ft.Colors.RED)
 
@@ -158,7 +220,7 @@ class MainView:
                 ft.Row(
                     controls=[
                         ft.Text("QuickReplay", size=24, weight=ft.FontWeight.BOLD),
-                        self.state_text,
+                        ft.Row(controls=[self.state_text, self.settings_header_button]),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
@@ -245,6 +307,7 @@ class MainView:
 
         self.refresh_button.content = "Discovering..." if state.discovering else "Refresh"
         self.refresh_button.disabled = not state.controls.refresh_enabled
+        self.settings_header_button.disabled = not state.controls.settings_enabled
         self.start_button.disabled = not state.controls.start_enabled
         self.replay_button.disabled = not state.controls.replay_enabled
         self.replay_button.visible = not state.replay_active
@@ -405,4 +468,83 @@ class MainView:
     async def _do_seek_absolute(self, target_ns: int) -> None:
         await self.session.seek_absolute_ns(target_ns)
         self.render(self.session.view_state())
+        self.page.update()
+
+    # -- settings handlers -------------------------------------------------
+    def _on_settings_open(self, event: ft.Event) -> None:
+        self._populate_settings_dialog()
+        self.page.show_dialog(self.settings_dialog)
+
+    def _populate_settings_dialog(self) -> None:
+        draft = self.session.settings_draft()
+        self._settings_camera_available = draft.camera_available
+        self.settings_explicit_checkbox.value = draft.use_explicit_camera_mode
+        self.settings_width_field.value = draft.camera_width
+        self.settings_height_field.value = draft.camera_height
+        self.settings_numerator_field.value = draft.camera_fps_numerator
+        self.settings_denominator_field.value = draft.camera_fps_denominator
+        self.settings_buffer_field.value = draft.buffer_duration_seconds
+        self.settings_mpv_field.value = draft.mpv_executable
+        self.settings_camera_label.value = (
+            f"Editing: {draft.camera_label}" if draft.camera_available else ""
+        )
+        self.settings_error_text.value = ""
+        self._apply_settings_field_state()
+        self.page.update()
+
+    def _on_settings_explicit_change(self, event: ft.Event) -> None:
+        self._apply_settings_field_state()
+        self.page.update()
+
+    def _apply_settings_field_state(self) -> None:
+        available = self._settings_camera_available
+        explicit = bool(self.settings_explicit_checkbox.value)
+        self.settings_explicit_checkbox.disabled = not available
+        self.settings_camera_hint.visible = not available
+        for field in (
+            self.settings_width_field,
+            self.settings_height_field,
+            self.settings_numerator_field,
+            self.settings_denominator_field,
+        ):
+            field.disabled = not (available and explicit)
+
+    def _settings_draft(self) -> SettingsDraft:
+        return SettingsDraft(
+            use_explicit_camera_mode=bool(self.settings_explicit_checkbox.value),
+            camera_width=self.settings_width_field.value or "",
+            camera_height=self.settings_height_field.value or "",
+            camera_fps_numerator=self.settings_numerator_field.value or "",
+            camera_fps_denominator=self.settings_denominator_field.value or "",
+            buffer_duration_seconds=self.settings_buffer_field.value or "",
+            mpv_executable=self.settings_mpv_field.value or "",
+            camera_available=self._settings_camera_available,
+        )
+
+    def _on_settings_cancel(self, event: ft.Event) -> None:
+        # Cancel discards the draft: nothing is saved and the session config is
+        # untouched.  The next open repopulates from the persisted config.
+        self.page.pop_dialog()
+
+    def _on_settings_apply(self, event: ft.Event) -> None:
+        self.page.run_task(self._apply_settings)
+
+    async def _apply_settings(self) -> None:
+        draft = self._settings_draft()
+        self.settings_apply_button.disabled = True
+        self.settings_cancel_button.disabled = True
+        self.page.update()
+        try:
+            result = await self.session.apply_settings(draft)
+        finally:
+            self.settings_apply_button.disabled = False
+            self.settings_cancel_button.disabled = False
+        if result.ok:
+            self.page.pop_dialog()
+            self.render(self.session.view_state())
+        else:
+            messages = [error.message for error in result.errors]
+            if result.message:
+                messages.insert(0, result.message)
+            self.settings_error_text.value = "\n".join(messages)
         self.page.update()

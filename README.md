@@ -16,8 +16,12 @@ setting, atomic save) is implemented.  A Flet 1.0 desktop UI is implemented:
 input discovery and selection, camera backend selection, recording state,
 stream information and metrics, replay preparation, and the replay control UI
 (Play/Pause, ±1 and ±20 frame steps, seek bar, Set Point, time and frame
-difference, resume).  The settings editor and packaging are not implemented
-yet.
+difference, resume).  A settings editor (explicit Apply/Cancel) edits the
+persisted configuration: the selected camera capture mode (width, height and an
+exact fractional FPS), the recording buffer duration and the mpv executable.
+A camera mode change is used by the next recording session; buffer duration and
+mpv executable changes are saved but need an application restart to take
+effect.  Packaging is not implemented yet.
 
 ## Requirements
 
