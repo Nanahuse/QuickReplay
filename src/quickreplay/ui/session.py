@@ -207,6 +207,8 @@ class UiSession:
         self._frame_difference: int | None = None
         self._replay_action_pending = False
         self._settings_applying = False
+        self._shutdown_task: asyncio.Task[None] | None = None
+        self._shutdown_complete = False
 
     # -- queries -----------------------------------------------------------
     @property
@@ -330,6 +332,19 @@ class UiSession:
         await self._bridge.resume_recording()
 
     async def shutdown(self) -> None:
+        """Shut the application down exactly once.
+
+        Repeated and concurrent calls share a single shutdown task, so the
+        bridge/controller/worker are never torn down twice.
+        """
+        if self._shutdown_complete:
+            return
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.ensure_future(self._shutdown_bridge())
+        await self._shutdown_task
+        self._shutdown_complete = True
+
+    async def _shutdown_bridge(self) -> None:
         await self._bridge.shutdown()
         await self._bridge.close()
 
