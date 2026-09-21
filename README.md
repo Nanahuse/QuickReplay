@@ -21,7 +21,7 @@ persisted configuration: the selected camera capture mode (width, height and an
 exact fractional FPS), the recording buffer duration and the mpv executable.
 A camera mode change is used by the next recording session; buffer duration and
 mpv executable changes are saved but need an application restart to take
-effect.  Packaging is not implemented yet.
+effect.
 
 ## Requirements
 
@@ -41,8 +41,23 @@ uv sync
 ## Run the desktop app
 
 ```powershell
-uv run flet run src/quickreplay/ui/app.py
+uv run flet run src/main.py
 ```
+
+## Build for Windows
+
+Windows packaging requires Visual Studio with **Desktop development with C++**
+and Windows Developer Mode (for symlink support). Build the x64 desktop
+application from a clean Flet build with:
+
+```powershell
+uv run flet clean
+uv run flet build windows --python-version 3.14 --build-version 2.0.0
+```
+
+The packaged application is generated under `build/windows` as
+`QuickReplay.exe`. The build uses the dependencies declared in
+`pyproject.toml`; no separate `requirements.txt` is needed.
 
 ## Test
 

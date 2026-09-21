@@ -20,6 +20,22 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/quickreplay"]
 
+[tool.flet]
+product = "QuickReplay"
+
+[tool.flet.app]
+path = "src"
+module = "main"
+
+[tool.flet.windows]
+artifact = "QuickReplay"
+
+[tool.flet.windows.compile]
+packages = false
+
+[tool.flet.windows.cleanup]
+packages = false
+
 [dependency-groups]
 dev = [
     "flet-cli==1.0.0",
