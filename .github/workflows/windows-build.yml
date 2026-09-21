@@ -35,7 +35,7 @@ jobs:
       - name: Build Windows app
         run: |
           uv run flet clean
-          uv run flet build windows --python-version 3.14
+          uv run flet build windows --python-version 3.14 --yes
 
       - name: Create portable distribution ZIP
         run: uv run python tools/package_windows_release.py
