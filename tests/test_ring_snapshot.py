@@ -104,7 +104,7 @@ def test_double_release_is_safe(make_segment: Callable[..., Segment]) -> None:
     assert ring.segment_count == 2
 
 
-def test_release_is_idempotent_and_segments_remain_readable(
+def test_released_snapshot_segments_remain_readable(
     make_segment: Callable[..., Segment],
 ) -> None:
     ring, s0, s1 = _ring_with_two(make_segment)
