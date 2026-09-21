@@ -143,6 +143,7 @@ class ControlState:
     start_enabled: bool
     replay_enabled: bool
     resume_enabled: bool
+    settings_enabled: bool
     discovering: bool
 
 
@@ -160,6 +161,7 @@ def control_state(
         start_enabled=idle and has_selection and not discovering,
         replay_enabled=recording,
         resume_enabled=replay,
+        settings_enabled=state != ApplicationState.SHUTTING_DOWN,
         discovering=discovering,
     )
 
