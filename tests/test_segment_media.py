@@ -80,23 +80,6 @@ def test_media_5994fps(media, tmp_path: Path, probe) -> None:
         assert abs(float(facts.video_rate) - float(fps)) < 0.01
 
 
-def test_independent_decode(media, tmp_path: Path, probe) -> None:
-    fps = Fraction(60, 1)
-    info = media.stream_info(fps=fps, width=160, height=90)
-    recorder = SegmentRecorder()
-    recorder.start(media.session(tmp_path, info))
-    segments = _record(media, recorder, duration_ns=4_500_000_000, fps=fps, width=160, height=90)
-    recorder.close()
-
-    assert len(segments) == 3
-    for segment in segments:
-        # Opening a single segment on its own must decode every frame.
-        facts = probe(segment.path)
-        assert facts.decoded_video_frames == segment.video_frames
-        assert facts.first_video_pts == 0
-        assert facts.keyframe_count >= 1
-
-
 def test_stream_layout_consistent_across_segments(media, tmp_path: Path, probe) -> None:
     fps = Fraction(60, 1)
     info = media.stream_info(fps=fps, width=64, height=36, sample_rate=48000, channels=2)

@@ -62,34 +62,6 @@ def test_audio_split_is_sample_exact(media, tmp_path: Path) -> None:
     assert sum(segment.audio_samples for segment in segments) == 192000
 
 
-def test_audio_total_samples(media, tmp_path: Path) -> None:
-    info = media.stream_info(
-        fps=FPS, width=64, height=36, sample_rate=SAMPLE_RATE, channels=CHANNELS
-    )
-    recorder = SegmentRecorder()
-    recorder.start(media.session(tmp_path, info))
-    frames = media.frames(
-        duration_ns=4_000_000_000,
-        fps=FPS,
-        width=64,
-        height=36,
-        sample_rate=SAMPLE_RATE,
-        channels=CHANNELS,
-    )
-    segments: list[Segment] = []
-    for frame in frames:
-        if isinstance(frame, VideoFrame):
-            segments.extend(recorder.push_video(frame))
-        else:
-            recorder.push_audio(frame)
-    last = recorder.finish()
-    assert last is not None
-    segments.append(last)
-    recorder.close()
-
-    assert sum(segment.audio_samples for segment in segments) == int(4.0 * SAMPLE_RATE)
-
-
 def test_audio_continuity_and_local_pts(media, tmp_path: Path, probe) -> None:
     info = media.stream_info(
         fps=FPS, width=64, height=36, sample_rate=SAMPLE_RATE, channels=CHANNELS

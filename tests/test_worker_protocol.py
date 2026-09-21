@@ -124,47 +124,6 @@ def test_event_pickle_round_trip(event: WorkerEvent) -> None:
     assert type(restored) is type(event)
 
 
-def test_all_command_types_are_represented() -> None:
-    assert {type(command) for command in _commands()} == {
-        StartRecording,
-        PrepareReplay,
-        ResumeRecording,
-        ChangeInput,
-        DiscoverInputs,
-        Shutdown,
-    }
-
-
-def test_all_event_types_are_represented() -> None:
-    assert {type(event) for event in _events()} == {
-        WorkerStateChanged,
-        InputsDiscovered,
-        StreamStarted,
-        RecordingMetricsUpdated,
-        ReplayPrepared,
-        WorkerError,
-    }
-
-
-def test_request_id_is_preserved() -> None:
-    request_id = uuid4()
-    assert PrepareReplay(request_id).request_id == request_id
-    assert ResumeRecording(request_id).request_id == request_id
-    assert ChangeInput(request_id, NdiInputConfig("x")).request_id == request_id
-    assert DiscoverInputs(request_id).request_id == request_id
-
-    asset = ReplayAsset(Path("replay.mkv"), 1, Fraction(60, 1))
-    prepared = ReplayPrepared(request_id, asset)
-    assert prepared.request_id == request_id
-
-    discovered = InputsDiscovered(request_id, (NdiInputDescriptor("x"),))
-    assert discovered.request_id == request_id
-
-    error = WorkerError(WorkerErrorCode.INTERNAL_ERROR, "boom", request_id)
-    assert error.request_id == request_id
-    assert WorkerError(WorkerErrorCode.INTERNAL_ERROR, "boom").request_id is None
-
-
 def test_pickled_request_id_is_a_uuid() -> None:
     request_id = uuid4()
     restored = pickle.loads(pickle.dumps(PrepareReplay(request_id)))

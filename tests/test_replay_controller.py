@@ -19,7 +19,7 @@ from quickreplay.replay.errors import (
     MpvStartupError,
     ReplayControllerError,
 )
-from quickreplay.replay.models import ReplayAsset, frame_difference
+from quickreplay.replay.models import ReplayAsset
 
 FPS_60 = Fraction(60, 1)
 FPS_5994 = Fraction(60000, 1001)
@@ -282,7 +282,7 @@ def test_set_point_and_time_difference(tmp_path: Path) -> None:
         controller.close()
 
 
-def test_frame_difference_matches_existing_rule(tmp_path: Path) -> None:
+def test_frame_difference_at_60fps(tmp_path: Path) -> None:
     mpv = FakeMpv()
     controller = mpv.controller()
     controller.open(_asset(tmp_path))
@@ -290,13 +290,12 @@ def test_frame_difference_matches_existing_rule(tmp_path: Path) -> None:
         mpv.state.time_pos = 2.0
         point = controller.set_point()
         mpv.state.time_pos = 2.05
-        expected = frame_difference(2_050_000_000, 2_000_000_000, FPS_60)
-        assert controller.frame_difference(point) == expected
+        assert controller.frame_difference(point) == 3
     finally:
         controller.close()
 
 
-def test_frame_difference_5994_matches_existing_rule(tmp_path: Path) -> None:
+def test_frame_difference_at_5994fps(tmp_path: Path) -> None:
     mpv = FakeMpv()
     controller = mpv.controller()
     controller.open(_asset(tmp_path, fps=FPS_5994))
@@ -304,8 +303,7 @@ def test_frame_difference_5994_matches_existing_rule(tmp_path: Path) -> None:
         mpv.state.time_pos = 2.0
         point = controller.set_point()
         mpv.state.time_pos = 2.05
-        expected = frame_difference(2_050_000_000, 2_000_000_000, FPS_5994)
-        assert controller.frame_difference(point) == expected
+        assert controller.frame_difference(point) == 3
     finally:
         controller.close()
 

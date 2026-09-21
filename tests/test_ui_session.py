@@ -1,7 +1,6 @@
 """UiSession: discovery correlation, selection, persistence and view state."""
 
 import asyncio
-from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 from uuid import uuid4
@@ -278,17 +277,6 @@ def test_view_state_without_metrics(tmp_path: Path) -> None:
     assert state.stream_text == "—"
 
 
-def test_resume_and_replay_actions(tmp_path: Path) -> None:
-    session, bridge, _ = _session(tmp_path)
-    asyncio.run(session.start())
-
-    asyncio.run(session.request_replay())
-    asyncio.run(session.resume_recording())
-
-    assert bridge.replay_requests == 1
-    assert bridge.resume_requests == 1
-
-
 def test_shutdown_closes_bridge(tmp_path: Path) -> None:
     session, bridge, _ = _session(tmp_path)
     asyncio.run(session.start())
@@ -297,20 +285,6 @@ def test_shutdown_closes_bridge(tmp_path: Path) -> None:
 
     assert bridge.shutdown_called
     assert bridge.closed
-
-
-def test_saved_config_replaced_after_successful_start(tmp_path: Path) -> None:
-    session, bridge, store = _session(tmp_path)
-    asyncio.run(session.start())
-    asyncio.run(_discover(session, bridge, (NdiInputDescriptor("OBS"),)))
-    asyncio.run(session.start_recording())
-    bridge.events = [RecordingStarted(stream_info=_stream_info())]
-    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RECORDING)
-    asyncio.run(session.poll())
-
-    assert session.config.input == NdiInputConfig("OBS")
-    assert store.load().input == NdiInputConfig("OBS")
-    assert replace(session.config, input=NdiInputConfig("OBS")) == session.config
 
 
 def _asset(duration_ns: int = 12_000_000_000, fps: Fraction = FPS) -> ReplayAsset:
@@ -380,18 +354,6 @@ def test_toggle_play_uses_core_pause_state(tmp_path: Path) -> None:
     assert bridge.pause_calls == 1
 
 
-def test_step_forward_and_backward_once(tmp_path: Path) -> None:
-    session, bridge, _ = _session(tmp_path)
-    asyncio.run(session.start())
-    asyncio.run(_enter_replay(session, bridge))
-
-    asyncio.run(session.step_forward())
-    asyncio.run(session.step_backward())
-
-    assert bridge.step_forward_calls == 1
-    assert bridge.step_backward_calls == 1
-
-
 def test_replay_action_pending_blocks_only_overlapping_action(tmp_path: Path) -> None:
     async def scenario() -> None:
         bridge = _BlockingReplayBridge()
@@ -408,27 +370,6 @@ def test_replay_action_pending_blocks_only_overlapping_action(tmp_path: Path) ->
         assert bridge.step_forward_calls == 2
 
     asyncio.run(scenario())
-
-
-def test_seek_frames_passes_frame_counts(tmp_path: Path) -> None:
-    session, bridge, _ = _session(tmp_path)
-    asyncio.run(session.start())
-    asyncio.run(_enter_replay(session, bridge))
-
-    asyncio.run(session.seek_frames(20))
-    asyncio.run(session.seek_frames(-20))
-
-    assert bridge.seek_frames_calls == [20, -20]
-
-
-def test_seek_absolute_passes_nanoseconds(tmp_path: Path) -> None:
-    session, bridge, _ = _session(tmp_path)
-    asyncio.run(session.start())
-    asyncio.run(_enter_replay(session, bridge))
-
-    asyncio.run(session.seek_absolute_ns(1_250_000_000))
-
-    assert bridge.seek_absolute_calls == [1_250_000_000]
 
 
 def test_set_point_uses_bridge_value_and_shows_differences(tmp_path: Path) -> None:

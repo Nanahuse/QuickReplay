@@ -10,20 +10,15 @@ from quickreplay.worker.inputs import (
 )
 
 
-def test_input_supports_audio() -> None:
-    assert input_supports_audio(NdiInputConfig("PC (OBS)")) is True
-    assert input_supports_audio(CameraInputConfig("cam", 0, "any")) is False
-
-
-def test_create_input_source_builds_the_matching_source() -> None:
-    assert isinstance(create_input_source(NdiInputConfig("PC (OBS)")), NdiInputSource)
-    assert isinstance(create_input_source(CameraInputConfig("cam", 0, "any")), CameraInputSource)
-
-
-def test_open_input_source_reports_audio_capability() -> None:
+def test_open_input_source_contract_matches_config() -> None:
     ndi = open_input_source(NdiInputConfig("PC (OBS)"))
     camera = open_input_source(CameraInputConfig("cam", 0, "any"))
+
+    assert isinstance(create_input_source(NdiInputConfig("PC (OBS)")), NdiInputSource)
+    assert isinstance(create_input_source(CameraInputConfig("cam", 0, "any")), CameraInputSource)
     assert isinstance(ndi.source, NdiInputSource)
     assert ndi.supports_audio is True
     assert isinstance(camera.source, CameraInputSource)
     assert camera.supports_audio is False
+    assert input_supports_audio(NdiInputConfig("PC (OBS)")) is True
+    assert input_supports_audio(CameraInputConfig("cam", 0, "any")) is False

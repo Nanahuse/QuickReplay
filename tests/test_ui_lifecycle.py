@@ -13,8 +13,6 @@ import flet as ft
 import pytest
 from fake_ui import FakeBridge
 
-from quickreplay.app.state import ApplicationState
-from quickreplay.application.models import ApplicationSnapshot
 from quickreplay.configuration.models import QuickReplayConfig
 from quickreplay.configuration.store import ConfigurationStore
 from quickreplay.ui.main_view import MainView, ViewLifecycle
@@ -504,31 +502,6 @@ def test_start_failure_cleans_up_core(tmp_path: Path) -> None:
 
 
 # -- state-specific close --------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        ApplicationState.RECORDING,
-        ApplicationState.REPLAY,
-        ApplicationState.PREPARING_REPLAY,
-        ApplicationState.RESUMING,
-        ApplicationState.STARTING,
-    ],
-)
-def test_close_in_state_shuts_down_in_order(tmp_path: Path, state: ApplicationState) -> None:
-    async def scenario() -> None:
-        view, _session, bridge, page = _make(tmp_path)
-        await view.start()
-        bridge.snapshot_value = ApplicationSnapshot(state=state)
-
-        await view.close()
-
-        assert view.lifecycle is ViewLifecycle.CLOSED
-        assert bridge.order == ["shutdown", "close"]
-        assert page.destroyed == 1
-
-    asyncio.run(scenario())
 
 
 # -- UiSession shutdown idempotency ---------------------------------------

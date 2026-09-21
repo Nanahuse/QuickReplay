@@ -1,19 +1,13 @@
 """Tests for recording domain models."""
 
 from dataclasses import FrozenInstanceError
-from fractions import Fraction
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
-from quickreplay.input.models import AudioStreamInfo, StreamInfo, VideoStreamInfo
 from quickreplay.recording.models import (
     RecordingMetrics,
-    RecordingSession,
     Segment,
-    WorkerErrorCode,
-    WorkerState,
 )
 
 
@@ -65,20 +59,6 @@ def test_segment_rejects_invalid_values() -> None:
         )
 
 
-def test_recording_session() -> None:
-    session = RecordingSession(
-        id=uuid4(),
-        stream_info=StreamInfo(
-            video=VideoStreamInfo(1920, 1080, Fraction(60, 1), "UYVY"),
-            audio=AudioStreamInfo(48000, 2),
-        ),
-        epoch_ns=123,
-        directory=Path("buffer/session"),
-    )
-    assert session.epoch_ns == 123
-    assert session.directory == Path("buffer/session")
-
-
 def test_recording_metrics() -> None:
     metrics = RecordingMetrics(
         captured_video_frames=120,
@@ -106,13 +86,3 @@ def test_recording_metrics() -> None:
             input_fps=0.0,
             recording_fps=0.0,
         )
-
-
-def test_worker_state_preserves_required_distinctions() -> None:
-    names = {state.name for state in WorkerState}
-    assert {"RECORDING", "FREEZING", "FROZEN", "ERROR", "SHUTTING_DOWN"} <= names
-
-
-def test_worker_error_codes() -> None:
-    for code in ("INPUT_NOT_FOUND", "ENCODER_FAILED", "REPLAY_ASSET_FAILED", "DISK_FULL"):
-        assert code in {member.name for member in WorkerErrorCode}

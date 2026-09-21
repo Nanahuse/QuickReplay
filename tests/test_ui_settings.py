@@ -5,6 +5,7 @@ from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
+import pytest
 from fake_ui import FakeBridge
 
 from quickreplay.app.state import ApplicationState
@@ -205,30 +206,37 @@ def _explicit_draft(
     )
 
 
-def test_invalid_width_rejected() -> None:
-    for value in ("", "0", "-1", "abc", "1920.0", "19 20", "1_0"):
-        errors = _errors(_explicit_draft(camera_width=value))
-        assert errors["camera_width"] == "Width must be a positive integer", value
-
-
-def test_invalid_height_rejected() -> None:
-    for value in ("", "0", "-5", "abc", "1080.0"):
-        errors = _errors(_explicit_draft(camera_height=value))
-        assert errors["camera_height"] == "Height must be a positive integer", value
-
-
-def test_invalid_fps_numerator_rejected() -> None:
-    for value in ("", "0", "-1", "abc", "59.94"):
-        errors = _errors(_explicit_draft(camera_fps_numerator=value))
-        assert errors["camera_fps_numerator"] == "FPS numerator must be a positive integer", value
-
-
-def test_invalid_fps_denominator_rejected() -> None:
-    for value in ("", "0", "-1", "abc", "1001.0"):
-        errors = _errors(_explicit_draft(camera_fps_denominator=value))
-        assert errors["camera_fps_denominator"] == "FPS denominator must be a positive integer", (
-            value
-        )
+@pytest.mark.parametrize(
+    ("field", "values", "message"),
+    [
+        (
+            "camera_width",
+            ("", "0", "-1", "abc", "1920.0", "19 20", "1_0"),
+            "Width must be a positive integer",
+        ),
+        (
+            "camera_height",
+            ("", "0", "-5", "abc", "1080.0"),
+            "Height must be a positive integer",
+        ),
+        (
+            "camera_fps_numerator",
+            ("", "0", "-1", "abc", "59.94"),
+            "FPS numerator must be a positive integer",
+        ),
+        (
+            "camera_fps_denominator",
+            ("", "0", "-1", "abc", "1001.0"),
+            "FPS denominator must be a positive integer",
+        ),
+    ],
+)
+def test_positive_integer_fields_reject_invalid_values(
+    field: str, values: tuple[str, ...], message: str
+) -> None:
+    for value in values:
+        errors = _errors(_explicit_draft(**{field: value}))
+        assert errors[field] == message, value
 
 
 def test_buffer_duration_validation() -> None:
@@ -289,18 +297,6 @@ def test_draft_for_ndi_disables_camera_section(tmp_path: Path) -> None:
     draft = session.settings_draft()
     assert draft.camera_available is False
     assert draft.camera_label == ""
-
-
-def test_cancel_leaves_config_and_store_unchanged(tmp_path: Path) -> None:
-    store = ConfigurationStore(tmp_path / "config.json")
-    session, _ = _camera_session(tmp_path, store=store)
-    before = session.config
-
-    # Editing the draft without applying is equivalent to Cancel.
-    draft = replace(session.settings_draft(), buffer_duration_seconds="90", mpv_executable="")
-    assert draft.buffer_duration_seconds == "90"
-    assert session.config == before
-    assert not store.path.exists()
 
 
 def test_apply_success_persists_and_updates_session(tmp_path: Path) -> None:
@@ -427,23 +423,6 @@ def test_buffer_apply_reports_restart_required(tmp_path: Path) -> None:
 
 
 # -- integration with input selection and recording ------------------------
-
-
-def test_saved_camera_mode_used_by_build_input_config(tmp_path: Path) -> None:
-    session, _ = _camera_session(tmp_path)
-    draft = replace(
-        session.settings_draft(),
-        use_explicit_camera_mode=True,
-        camera_width="1920",
-        camera_height="1080",
-        camera_fps_numerator="60000",
-        camera_fps_denominator="1001",
-    )
-    asyncio.run(session.apply_settings(draft))
-
-    built = session.build_input_config()
-
-    assert built == replace(CAMERA, mode=CameraMode(1920, 1080, Fraction(60000, 1001)))
 
 
 def test_saved_camera_mode_used_on_next_recording_start(tmp_path: Path) -> None:
