@@ -219,11 +219,12 @@ def _pipe_bytes_available(fd: int) -> int:
     msvcrt = __import__("msvcrt")
     windll = getattr(ctypes, "WinDLL")  # noqa: B009 - Windows-only attribute
     kernel32 = windll("kernel32", use_last_error=True)
-    handle = msvcrt.get_osfhandle(fd)
+    handle = getattr(msvcrt, "get_osfhandle")(fd)  # noqa: B009 - Windows-only
     available = ctypes.c_ulong(0)
     ok = kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(available), None)
     if not ok:
-        raise OSError(ctypes.get_last_error(), "PeekNamedPipe failed")
+        get_last_error = getattr(ctypes, "get_last_error")  # noqa: B009 - Windows-only
+        raise OSError(get_last_error(), "PeekNamedPipe failed")
     return int(available.value)
 
 
