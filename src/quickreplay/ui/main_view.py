@@ -7,13 +7,55 @@ session; the view holds only transient widget state.
 """
 
 import asyncio
+from dataclasses import dataclass
+from decimal import Decimal
 
 import flet as ft
 
-from quickreplay.ui.session import CAMERA_KIND, NDI_KIND, UiSession, UiViewState
+from quickreplay.app.state import ApplicationState
+from quickreplay.ui.presentation import format_duration_ns
+from quickreplay.ui.session import (
+    CAMERA_KIND,
+    NDI_KIND,
+    ReplayView,
+    UiSession,
+    UiViewState,
+)
 
 POLL_INTERVAL_SECONDS = 0.1
+POLL_INTERVAL_REPLAY_SECONDS = 0.05
 _EMPTY = "—"
+_NANOSECONDS_PER_SECOND = 1_000_000_000
+
+
+def slider_seconds_to_ns(value: float) -> int:
+    """Convert a Slider value (seconds) to integer nanoseconds at the UI boundary."""
+    return int(Decimal(str(value)) * _NANOSECONDS_PER_SECOND)
+
+
+@dataclass(slots=True)
+class SeekDrag:
+    """Pure seek-bar drag state (no Flet types), so it can be tested headlessly.
+
+    While ``active`` the view must not overwrite the slider thumb with the
+    polled position, and no seek command is sent until :meth:`end`.
+    """
+
+    active: bool = False
+    preview_ns: int | None = None
+
+    def start(self, value: float) -> None:
+        self.active = True
+        self.preview_ns = slider_seconds_to_ns(value)
+
+    def update_preview(self, value: float) -> None:
+        self.preview_ns = slider_seconds_to_ns(value)
+
+    def end(self, value: float) -> int:
+        target_ns = slider_seconds_to_ns(value)
+        self.preview_ns = target_ns
+        self.active = False
+        return target_ns
 
 
 class MainView:
@@ -52,6 +94,61 @@ class MainView:
         self.buffer_bar = ft.ProgressBar(value=0)
         self.segments_text = ft.Text(_EMPTY)
         self.drops_text = ft.Text(_EMPTY)
+        self.replay_fps_text = ft.Text(_EMPTY)
+
+        # Replay panel (only visible while replaying).
+        self._seek_drag = SeekDrag()
+        self.replay_position_text = ft.Text(_EMPTY)
+        self.replay_slider = ft.Slider(
+            min=0,
+            max=1,
+            value=0,
+            on_change_start=self._on_seek_start,
+            on_change=self._on_seek_change,
+            on_change_end=self._on_seek_end,
+        )
+        self.replay_play_button = ft.FilledButton(content="Play", on_click=self._on_play_pause)
+        self.replay_back20_button = ft.FilledButton(
+            content="-20f", on_click=lambda _event: self._run_replay_action("seek", -20)
+        )
+        self.replay_back1_button = ft.FilledButton(
+            content="-1f", on_click=lambda _event: self._run_replay_action("step_backward")
+        )
+        self.replay_forward1_button = ft.FilledButton(
+            content="+1f", on_click=lambda _event: self._run_replay_action("step_forward")
+        )
+        self.replay_forward20_button = ft.FilledButton(
+            content="+20f", on_click=lambda _event: self._run_replay_action("seek", 20)
+        )
+        self.set_point_text = ft.Text(_EMPTY)
+        self.time_difference_text = ft.Text(_EMPTY)
+        self.frame_difference_text = ft.Text(_EMPTY)
+        self.set_point_button = ft.FilledButton(content="Set Point", on_click=self._on_set_point)
+        self.replay_panel = ft.Column(
+            controls=[
+                ft.Text("Replay", weight=ft.FontWeight.BOLD),
+                ft.Row(controls=[self.replay_position_text, ft.Text("|"), self.replay_fps_text]),
+                self.replay_slider,
+                ft.Row(
+                    controls=[
+                        self.replay_back20_button,
+                        self.replay_back1_button,
+                        self.replay_play_button,
+                        self.replay_forward1_button,
+                        self.replay_forward20_button,
+                    ]
+                ),
+                ft.Row(controls=[ft.Text("Set Point:"), self.set_point_text]),
+                ft.Row(controls=[ft.Text("Difference:"), self.time_difference_text]),
+                ft.Row(controls=[ft.Text("Frames:"), self.frame_difference_text]),
+                ft.Row(
+                    controls=[self.set_point_button, self.resume_button],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+            ],
+            spacing=10,
+            visible=False,
+        )
 
         self.status_text = ft.Text("", color=ft.Colors.BLUE_GREY)
         self.error_text = ft.Text("", color=ft.Colors.RED)
@@ -81,7 +178,9 @@ class MainView:
                 self.buffer_bar,
                 ft.Row(controls=[ft.Text("Segments"), self.segments_text]),
                 ft.Row(controls=[ft.Text("Drops"), self.drops_text]),
-                ft.Row(controls=[self.replay_button, self.resume_button]),
+                ft.Row(controls=[self.replay_button]),
+                ft.Divider(),
+                self.replay_panel,
                 ft.Divider(),
                 self.status_text,
                 self.error_text,
@@ -101,9 +200,15 @@ class MainView:
                 await self.session.poll()
             except Exception as exc:  # noqa: BLE001 - surface poll failures in the UI
                 self.session.note_error(f"UI poll failed: {exc}")
-            self.render(self.session.view_state())
+            state = self.session.view_state()
+            self.render(state)
             self.page.update()
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            interval = (
+                POLL_INTERVAL_REPLAY_SECONDS
+                if state.state is ApplicationState.REPLAY
+                else POLL_INTERVAL_SECONDS
+            )
+            await asyncio.sleep(interval)
 
     def on_window_event(self, event: ft.WindowEvent) -> None:
         if getattr(event, "type", None) == ft.WindowEventType.CLOSE:
@@ -142,9 +247,9 @@ class MainView:
         self.refresh_button.disabled = not state.controls.refresh_enabled
         self.start_button.disabled = not state.controls.start_enabled
         self.replay_button.disabled = not state.controls.replay_enabled
-        self.resume_button.disabled = not state.controls.resume_enabled
         self.replay_button.visible = not state.replay_active
-        self.resume_button.visible = state.replay_active
+
+        self._render_replay(state.replay)
 
         self.stream_text.value = state.stream_text
         self.audio_text.value = state.audio_text
@@ -160,6 +265,41 @@ class MainView:
         self.status_text.visible = bool(state.status_message)
         self.error_text.value = state.error_message or ""
         self.error_text.visible = bool(state.error_message)
+
+    def _render_replay(self, replay: ReplayView | None) -> None:
+        self.replay_panel.visible = replay is not None
+        if replay is None:
+            self._seek_drag = SeekDrag()
+            return
+
+        if self._seek_drag.active:
+            preview_ns = self._seek_drag.preview_ns or 0
+            self.replay_position_text.value = (
+                f"{format_duration_ns(preview_ns)} / {replay.duration_text}"
+            )
+        else:
+            self.replay_position_text.value = f"{replay.position_text} / {replay.duration_text}"
+            duration_seconds = replay.duration_ns / _NANOSECONDS_PER_SECOND
+            self.replay_slider.max = duration_seconds if duration_seconds > 0 else 0
+            self.replay_slider.value = replay.position_ns / _NANOSECONDS_PER_SECOND
+
+        duration_seconds = replay.duration_ns / _NANOSECONDS_PER_SECOND
+        self.replay_slider.disabled = duration_seconds <= 0 or replay.action_pending
+        self.replay_fps_text.value = f"{replay.fps_text} fps"
+        self.replay_play_button.content = "Play" if replay.paused else "Pause"
+        for button in (
+            self.replay_back20_button,
+            self.replay_back1_button,
+            self.replay_play_button,
+            self.replay_forward1_button,
+            self.replay_forward20_button,
+            self.set_point_button,
+            self.resume_button,
+        ):
+            button.disabled = replay.action_pending
+        self.set_point_text.value = replay.set_point_text
+        self.time_difference_text.value = replay.time_difference_text
+        self.frame_difference_text.value = replay.frame_difference_text
 
     # -- action handlers ---------------------------------------------------
     def _on_kind_change(self, event: ft.Event) -> None:
@@ -215,5 +355,54 @@ class MainView:
 
     async def _resume(self) -> None:
         await self.session.resume_recording()
+        self.render(self.session.view_state())
+        self.page.update()
+
+    # -- replay handlers ---------------------------------------------------
+    def _run_replay_action(self, action: str, frames: int | None = None) -> None:
+        self.page.run_task(self._do_replay_action, action, frames)
+
+    async def _do_replay_action(self, action: str, frames: int | None) -> None:
+        if action == "seek" and frames is not None:
+            await self.session.seek_frames(frames)
+        elif action == "step_forward":
+            await self.session.step_forward()
+        elif action == "step_backward":
+            await self.session.step_backward()
+        self.render(self.session.view_state())
+        self.page.update()
+
+    def _on_play_pause(self, event: ft.Event) -> None:
+        self.page.run_task(self._do_play_pause)
+
+    async def _do_play_pause(self) -> None:
+        await self.session.toggle_play_pause()
+        self.render(self.session.view_state())
+        self.page.update()
+
+    def _on_set_point(self, event: ft.Event) -> None:
+        self.page.run_task(self._do_set_point)
+
+    async def _do_set_point(self) -> None:
+        await self.session.set_replay_point()
+        self.render(self.session.view_state())
+        self.page.update()
+
+    def _on_seek_start(self, event: ft.Event) -> None:
+        # While dragging, poll must not move the thumb.
+        self._seek_drag.start(self.replay_slider.value or 0)
+
+    def _on_seek_change(self, event: ft.Event) -> None:
+        # Preview only; no seek command is sent while dragging.
+        self._seek_drag.update_preview(self.replay_slider.value or 0)
+        self.render(self.session.view_state())
+        self.page.update()
+
+    def _on_seek_end(self, event: ft.Event) -> None:
+        target_ns = self._seek_drag.end(self.replay_slider.value or 0)
+        self.page.run_task(self._do_seek_absolute, target_ns)
+
+    async def _do_seek_absolute(self, target_ns: int) -> None:
+        await self.session.seek_absolute_ns(target_ns)
         self.render(self.session.view_state())
         self.page.update()

@@ -15,6 +15,7 @@ from uuid import UUID
 from quickreplay.application.events import ApplicationEvent
 from quickreplay.application.models import ApplicationSnapshot
 from quickreplay.input.models import InputConfig
+from quickreplay.replay.models import SetPoint
 
 EXECUTOR_THREAD_PREFIX = "QuickReplayApplication"
 
@@ -37,6 +38,29 @@ class ControllerLike(Protocol):
     def snapshot(self) -> ApplicationSnapshot: ...
 
     def shutdown(self) -> None: ...
+
+    # -- replay delegate ---------------------------------------------------
+    def play(self) -> None: ...
+
+    def pause(self) -> None: ...
+
+    def is_paused(self) -> bool: ...
+
+    def step_forward(self) -> None: ...
+
+    def step_backward(self) -> None: ...
+
+    def seek_frames(self, frames: int) -> None: ...
+
+    def seek_absolute_ns(self, position_ns: int) -> None: ...
+
+    def replay_position_ns(self) -> int: ...
+
+    def set_point(self) -> SetPoint: ...
+
+    def time_difference_ns(self, point: SetPoint) -> int: ...
+
+    def frame_difference(self, point: SetPoint) -> int: ...
 
 
 class ApplicationUiBridge:
@@ -82,6 +106,40 @@ class ApplicationUiBridge:
 
     async def shutdown(self) -> None:
         await self._run(self._controller.shutdown)
+
+    # -- replay delegate ---------------------------------------------------
+    async def play(self) -> None:
+        await self._run(self._controller.play)
+
+    async def pause(self) -> None:
+        await self._run(self._controller.pause)
+
+    async def is_paused(self) -> bool:
+        return await self._run(self._controller.is_paused)
+
+    async def step_forward(self) -> None:
+        await self._run(self._controller.step_forward)
+
+    async def step_backward(self) -> None:
+        await self._run(self._controller.step_backward)
+
+    async def seek_frames(self, frames: int) -> None:
+        await self._run(self._controller.seek_frames, frames)
+
+    async def seek_absolute_ns(self, position_ns: int) -> None:
+        await self._run(self._controller.seek_absolute_ns, position_ns)
+
+    async def replay_position_ns(self) -> int:
+        return await self._run(self._controller.replay_position_ns)
+
+    async def set_point(self) -> SetPoint:
+        return await self._run(self._controller.set_point)
+
+    async def time_difference_ns(self, point: SetPoint) -> int:
+        return await self._run(self._controller.time_difference_ns, point)
+
+    async def frame_difference(self, point: SetPoint) -> int:
+        return await self._run(self._controller.frame_difference, point)
 
     async def close(self) -> None:
         """Shut the executor down.  Call only after :meth:`shutdown`."""

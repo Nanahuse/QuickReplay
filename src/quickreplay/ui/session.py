@@ -6,6 +6,7 @@ correlation, transient status) and drives the application through
 imports so it can be tested headlessly.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Protocol
 from uuid import UUID
@@ -30,12 +31,18 @@ from quickreplay.input.models import (
     NdiInputConfig,
     NdiInputDescriptor,
 )
+from quickreplay.replay.errors import MpvProcessExitedError
+from quickreplay.replay.models import SetPoint
 from quickreplay.ui.presentation import (
     ControlState,
     MetricsView,
     camera_backend_options,
     control_state,
     format_audio,
+    format_duration_ns,
+    format_fps,
+    format_signed_duration_ns,
+    format_signed_frames,
     format_stream_info,
     metrics_view,
     state_label,
@@ -66,6 +73,29 @@ class BridgeLike(Protocol):
 
     async def close(self) -> None: ...
 
+    # -- replay delegate ---------------------------------------------------
+    async def play(self) -> None: ...
+
+    async def pause(self) -> None: ...
+
+    async def is_paused(self) -> bool: ...
+
+    async def step_forward(self) -> None: ...
+
+    async def step_backward(self) -> None: ...
+
+    async def seek_frames(self, frames: int) -> None: ...
+
+    async def seek_absolute_ns(self, position_ns: int) -> None: ...
+
+    async def replay_position_ns(self) -> int: ...
+
+    async def set_point(self) -> SetPoint: ...
+
+    async def time_difference_ns(self, point: SetPoint) -> int: ...
+
+    async def frame_difference(self, point: SetPoint) -> int: ...
+
 
 @dataclass(frozen=True, slots=True)
 class InputOption:
@@ -75,6 +105,23 @@ class InputOption:
     kind: str
     label: str
     descriptor: InputDescriptor
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayView:
+    """Display-ready replay playback state (only populated while replaying)."""
+
+    position_ns: int
+    duration_ns: int
+    paused: bool
+    position_text: str
+    duration_text: str
+    fps_text: str
+    set_point_text: str
+    time_difference_text: str
+    frame_difference_text: str
+    has_set_point: bool
+    action_pending: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +137,7 @@ class UiViewState:
     status_message: str | None
     error_message: str | None
     replay_active: bool
+    replay: ReplayView | None
     input_options: tuple[InputOption, ...]
     selected_key: str | None
     input_kind: str
@@ -143,6 +191,13 @@ class UiSession:
         self._status: str | None = None
         self._error: str | None = None
 
+        self._replay_position_ns: int | None = None
+        self._replay_paused: bool | None = None
+        self._set_point: SetPoint | None = None
+        self._time_difference_ns: int | None = None
+        self._frame_difference: int | None = None
+        self._replay_action_pending = False
+
     # -- queries -----------------------------------------------------------
     @property
     def config(self) -> QuickReplayConfig:
@@ -172,6 +227,7 @@ class UiSession:
             status_message=self._status,
             error_message=self._error or self._snapshot.error_message,
             replay_active=self._snapshot.state == ApplicationState.REPLAY,
+            replay=self._replay_view(),
             input_options=self._options(),
             selected_key=self._selected_key,
             input_kind=self._input_kind,
@@ -218,9 +274,17 @@ class UiSession:
         events = await self._bridge.poll()
         for event in events:
             self._handle_event(event)
+        previous_state = self._snapshot.state
         self._snapshot = await self._bridge.snapshot()
         if self._snapshot.state in (ApplicationState.IDLE, ApplicationState.ERROR):
             self._pending_start_input = None
+        if self._snapshot.state == ApplicationState.REPLAY:
+            if previous_state != ApplicationState.REPLAY:
+                self._reset_replay_state()
+            await self.refresh_replay_status()
+        elif previous_state == ApplicationState.REPLAY:
+            # Leaving replay clears the transient replay UI state.
+            self._reset_replay_state()
 
     async def set_input_kind(self, kind: str) -> None:
         if kind not in (NDI_KIND, CAMERA_KIND) or kind == self._input_kind:
@@ -263,7 +327,105 @@ class UiSession:
         """Record a UI-side error (for example a failed poll iteration)."""
         self._error = message
 
+    # -- replay actions ----------------------------------------------------
+    async def toggle_play_pause(self) -> None:
+        """Toggle using the core pause state as the source of truth."""
+
+        async def action() -> None:
+            if await self._bridge.is_paused():
+                await self._bridge.play()
+            else:
+                await self._bridge.pause()
+
+        await self._run_replay_action(action)
+
+    async def step_backward(self) -> None:
+        await self._run_replay_action(self._bridge.step_backward)
+
+    async def step_forward(self) -> None:
+        await self._run_replay_action(self._bridge.step_forward)
+
+    async def seek_frames(self, frames: int) -> None:
+        await self._run_replay_action(lambda: self._bridge.seek_frames(frames))
+
+    async def seek_absolute_ns(self, position_ns: int) -> None:
+        await self._run_replay_action(lambda: self._bridge.seek_absolute_ns(position_ns))
+
+    async def set_replay_point(self) -> None:
+        async def action() -> None:
+            self._set_point = await self._bridge.set_point()
+
+        await self._run_replay_action(action)
+
+    async def refresh_replay_status(self) -> None:
+        """Refresh position, pause state and differences while replaying."""
+        if self._snapshot.state != ApplicationState.REPLAY:
+            return
+        try:
+            self._replay_position_ns = await self._bridge.replay_position_ns()
+            self._replay_paused = await self._bridge.is_paused()
+            if self._set_point is not None:
+                self._time_difference_ns = await self._bridge.time_difference_ns(self._set_point)
+                self._frame_difference = await self._bridge.frame_difference(self._set_point)
+        except MpvProcessExitedError:
+            # The application controller already treats this as the replay
+            # ending; do not surface it as a UI error.
+            pass
+        except Exception as exc:  # noqa: BLE001 - transient replay control error
+            self._error = f"Replay control failed: {exc}"
+
+    async def _run_replay_action(self, action: Callable[[], Awaitable[None]]) -> None:
+        if self._replay_action_pending:
+            return
+        self._replay_action_pending = True
+        try:
+            await action()
+        except MpvProcessExitedError:
+            pass
+        except Exception as exc:  # noqa: BLE001 - transient replay control error
+            self._error = f"Replay control failed: {exc}"
+        finally:
+            self._replay_action_pending = False
+            await self.refresh_replay_status()
+
     # -- internals ---------------------------------------------------------
+    def _reset_replay_state(self) -> None:
+        self._replay_position_ns = None
+        self._replay_paused = None
+        self._set_point = None
+        self._time_difference_ns = None
+        self._frame_difference = None
+
+    def _replay_view(self) -> ReplayView | None:
+        if self._snapshot.state != ApplicationState.REPLAY:
+            return None
+        asset = self._snapshot.replay_asset
+        duration_ns = asset.duration_ns if asset is not None else 0
+        position_ns = self._replay_position_ns if self._replay_position_ns is not None else 0
+        set_point = self._set_point
+        return ReplayView(
+            position_ns=position_ns,
+            duration_ns=duration_ns,
+            paused=bool(self._replay_paused),
+            position_text=format_duration_ns(position_ns),
+            duration_text=format_duration_ns(duration_ns),
+            fps_text=format_fps(asset.fps) if asset is not None else "—",
+            set_point_text=format_duration_ns(set_point.position_ns) if set_point else "—",
+            time_difference_text=(
+                format_signed_duration_ns(self._time_difference_ns)
+                if self._time_difference_ns is not None
+                else "—"
+            ),
+            frame_difference_text=(
+                format_signed_frames(self._frame_difference)
+                if self._frame_difference is not None
+                else "—"
+            ),
+            has_set_point=set_point is not None,
+            action_pending=self._replay_action_pending,
+        )
+
+    # -- event handling ----------------------------------------------------
     def _handle_event(self, event: ApplicationEvent) -> None:
         if isinstance(event, InputsChanged):
             self._handle_inputs(event)

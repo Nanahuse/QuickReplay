@@ -29,6 +29,8 @@ from quickreplay.input.models import (
     VideoStreamInfo,
 )
 from quickreplay.recording.models import RecordingMetrics
+from quickreplay.replay.errors import MpvProcessExitedError
+from quickreplay.replay.models import ReplayAsset, SetPoint
 from quickreplay.ui.session import CAMERA_KIND, UiSession
 
 FPS = Fraction(60, 1)
@@ -297,3 +299,208 @@ def test_saved_config_replaced_after_successful_start(tmp_path: Path) -> None:
     assert session.config.input == NdiInputConfig("OBS")
     assert store.load().input == NdiInputConfig("OBS")
     assert replace(session.config, input=NdiInputConfig("OBS")) == session.config
+
+
+def _asset(duration_ns: int = 12_000_000_000, fps: Fraction = FPS) -> ReplayAsset:
+    return ReplayAsset(Path("replay.mkv"), duration_ns, fps)
+
+
+async def _enter_replay(session, bridge, *, duration_ns: int = 12_000_000_000) -> None:
+    bridge.snapshot_value = ApplicationSnapshot(
+        state=ApplicationState.REPLAY, replay_asset=_asset(duration_ns)
+    )
+    await session.poll()
+
+
+def test_replay_entry_populates_view(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    bridge.position_value = 3_250_000_000
+    bridge.paused_value = True
+
+    asyncio.run(_enter_replay(session, bridge))
+
+    view = session.view_state().replay
+    assert view is not None
+    assert view.position_ns == 3_250_000_000
+    assert view.duration_ns == 12_000_000_000
+    assert view.paused is True
+    assert view.position_text == "00:03.250"
+    assert view.duration_text == "00:12.000"
+    assert view.set_point_text == "—"
+    assert view.time_difference_text == "—"
+    assert view.frame_difference_text == "—"
+    assert view.has_set_point is False
+
+
+def test_replay_exit_clears_state(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+    bridge.set_point_value = 2_000_000_000
+    asyncio.run(session.set_replay_point())
+    assert session.view_state().replay is not None
+
+    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RESUMING)
+    asyncio.run(session.poll())
+    assert session.view_state().replay is None
+
+    # A new replay must not carry over the previous set point.
+    asyncio.run(_enter_replay(session, bridge))
+    view = session.view_state().replay
+    assert view is not None
+    assert view.has_set_point is False
+    assert view.set_point_text == "—"
+
+
+def test_toggle_play_uses_core_pause_state(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    bridge.paused_value = True
+    asyncio.run(session.toggle_play_pause())
+    assert bridge.play_calls == 1
+    assert bridge.pause_calls == 0
+
+    bridge.paused_value = False
+    asyncio.run(session.toggle_play_pause())
+    assert bridge.pause_calls == 1
+
+
+def test_step_forward_and_backward_once(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    asyncio.run(session.step_forward())
+    asyncio.run(session.step_backward())
+
+    assert bridge.step_forward_calls == 1
+    assert bridge.step_backward_calls == 1
+
+
+def test_seek_frames_passes_frame_counts(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    asyncio.run(session.seek_frames(20))
+    asyncio.run(session.seek_frames(-20))
+
+    assert bridge.seek_frames_calls == [20, -20]
+
+
+def test_seek_absolute_passes_nanoseconds(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    asyncio.run(session.seek_absolute_ns(1_250_000_000))
+
+    assert bridge.seek_absolute_calls == [1_250_000_000]
+
+
+def test_set_point_uses_bridge_value_and_shows_differences(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+    bridge.position_value = 3_250_000_000
+    bridge.set_point_value = 2_500_000_000
+    bridge.time_difference_value = 750_000_000
+    bridge.frame_difference_value = 45
+
+    asyncio.run(session.set_replay_point())
+
+    view = session.view_state().replay
+    assert view is not None
+    assert view.has_set_point is True
+    assert view.set_point_text == "00:02.500"
+    assert view.time_difference_text == "+00:00.750"
+    assert view.frame_difference_text == "+45"
+    assert bridge.set_point_calls == 1
+    assert bridge.time_difference_points == [SetPoint(2_500_000_000)]
+    assert bridge.frame_difference_points == [SetPoint(2_500_000_000)]
+
+
+def test_differences_are_not_queried_without_set_point(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    assert bridge.time_difference_points == []
+    assert bridge.frame_difference_points == []
+
+
+def test_non_replay_poll_does_not_query_replay_api(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RECORDING)
+
+    asyncio.run(session.poll())
+
+    assert bridge.position_calls == 0
+    assert bridge.is_paused_calls == 0
+
+
+def test_replay_status_refreshes_during_replay(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+    bridge.set_point_value = 2_000_000_000
+    asyncio.run(session.set_replay_point())
+    bridge.position_value = 2_050_000_000
+    bridge.time_difference_value = 50_000_000
+    bridge.frame_difference_value = 3
+
+    asyncio.run(session.poll())
+
+    view = session.view_state().replay
+    assert view is not None
+    assert view.position_ns == 2_050_000_000
+    assert view.time_difference_text == "+00:00.050"
+    assert view.frame_difference_text == "+3"
+
+
+def test_negative_frame_difference_is_signed(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+    bridge.set_point_value = 2_000_000_000
+    bridge.frame_difference_value = -12
+    bridge.time_difference_value = -750_000_000
+
+    asyncio.run(session.set_replay_point())
+
+    view = session.view_state().replay
+    assert view is not None
+    assert view.frame_difference_text == "-12"
+    assert view.time_difference_text == "-00:00.750"
+
+
+def test_mpv_exit_during_status_refresh_is_not_an_error(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    bridge.position_error = MpvProcessExitedError("mpv exited")
+    asyncio.run(session.poll())
+    assert session.view_state().error_message is None
+
+    bridge.position_error = None
+    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RESUMING)
+    asyncio.run(session.poll())
+    assert session.view_state().replay is None
+
+
+def test_transient_replay_error_is_reported(tmp_path: Path) -> None:
+    session, bridge, _ = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_enter_replay(session, bridge))
+
+    bridge.position_error = RuntimeError("seek failed")
+    asyncio.run(session.poll())
+
+    assert "Replay control failed" in (session.view_state().error_message or "")
+    # The application state machine is unchanged.
+    assert session.view_state().state == ApplicationState.REPLAY
