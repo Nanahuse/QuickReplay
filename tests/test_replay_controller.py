@@ -49,6 +49,7 @@ def test_open_launches_mpv_with_expected_arguments(tmp_path: Path) -> None:
         for flag in (
             "--no-config",
             "--terminal=no",
+            "--osc=no",
             "--pause=yes",
             "--keep-open=yes",
             "--force-window=yes",
