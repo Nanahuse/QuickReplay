@@ -619,10 +619,9 @@ class MainView:
     def _repeat_button(
         self, label: str, action: Callable[[], Awaitable[None]], interval: float
     ) -> tuple[ft.FilledButton, ft.GestureDetector]:
-        button = ft.FilledButton(content=label)
+        button = ft.FilledButton(content=label, on_click=lambda _event: self._run_task(action))
         gesture = ft.GestureDetector(
             content=button,
-            on_tap=lambda _event: self._run_task(action),
             on_long_press_start=lambda _event: self._start_replay_repeat(action, interval),
             on_long_press_end=lambda _event: self._stop_replay_repeat(),
             on_long_press_cancel=lambda _event: self._stop_replay_repeat(),
