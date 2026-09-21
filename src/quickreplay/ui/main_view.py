@@ -16,6 +16,7 @@ import flet as ft
 
 from quickreplay.app.state import ApplicationState
 from quickreplay.ui.presentation import format_duration_ns
+from quickreplay.ui.replay_repeat import ReplayActionRepeater
 from quickreplay.ui.session import (
     CAMERA_KIND,
     NDI_KIND,
@@ -30,6 +31,10 @@ POLL_INTERVAL_REPLAY_SECONDS = 0.05
 _EMPTY = "—"
 _NANOSECONDS_PER_SECOND = 1_000_000_000
 _DESTROYED_SESSION_MARKER = "destroyed session"
+REPLAY_REPEAT_DELAY_SECONDS = 0.500
+REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
+REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
+REPLAY_FAST_MOVE_FRAMES = 20
 
 
 class ViewLifecycle(Enum):
@@ -97,6 +102,7 @@ class MainView:
         self._poll_task: asyncio.Task[None] | None = None
         self._starting = False
         self._start_done = asyncio.Event()
+        self._replay_repeater = ReplayActionRepeater()
 
         self.state_text = ft.Text("", weight=ft.FontWeight.BOLD)
         self.kind_button = ft.SegmentedButton(
@@ -140,17 +146,21 @@ class MainView:
             on_change_end=self._on_seek_end,
         )
         self.replay_play_button = ft.FilledButton(content="Play", on_click=self._on_play_pause)
-        self.replay_back20_button = ft.FilledButton(
-            content="-20f", on_click=lambda _event: self._run_replay_action("seek", -20)
+        self.replay_back20_button, self.replay_back20_gesture = self._repeat_button(
+            "-20f",
+            lambda: self.session.seek_frames(-REPLAY_FAST_MOVE_FRAMES),
+            REPLAY_REPEAT_FAST_INTERVAL_SECONDS,
         )
-        self.replay_back1_button = ft.FilledButton(
-            content="-1f", on_click=lambda _event: self._run_replay_action("step_backward")
+        self.replay_back1_button, self.replay_back1_gesture = self._repeat_button(
+            "-1f", self.session.step_backward, REPLAY_REPEAT_FRAME_INTERVAL_SECONDS
         )
-        self.replay_forward1_button = ft.FilledButton(
-            content="+1f", on_click=lambda _event: self._run_replay_action("step_forward")
+        self.replay_forward1_button, self.replay_forward1_gesture = self._repeat_button(
+            "+1f", self.session.step_forward, REPLAY_REPEAT_FRAME_INTERVAL_SECONDS
         )
-        self.replay_forward20_button = ft.FilledButton(
-            content="+20f", on_click=lambda _event: self._run_replay_action("seek", 20)
+        self.replay_forward20_button, self.replay_forward20_gesture = self._repeat_button(
+            "+20f",
+            lambda: self.session.seek_frames(REPLAY_FAST_MOVE_FRAMES),
+            REPLAY_REPEAT_FAST_INTERVAL_SECONDS,
         )
         self.set_point_text = ft.Text(_EMPTY)
         self.time_difference_text = ft.Text(_EMPTY)
@@ -163,11 +173,11 @@ class MainView:
                 self.replay_slider,
                 ft.Row(
                     controls=[
-                        self.replay_back20_button,
-                        self.replay_back1_button,
+                        self.replay_back20_gesture,
+                        self.replay_back1_gesture,
                         self.replay_play_button,
-                        self.replay_forward1_button,
-                        self.replay_forward20_button,
+                        self.replay_forward1_gesture,
+                        self.replay_forward20_gesture,
                     ]
                 ),
                 ft.Row(controls=[ft.Text("Set Point:"), self.set_point_text]),
@@ -395,6 +405,7 @@ class MainView:
         self._lifecycle = ViewLifecycle.CLOSING
         errors: list[Exception] = []
         try:
+            await self._replay_repeater.stop()
             if self._starting and not self._start_done.is_set():
                 # Never tear the core down in the middle of a start.
                 await self._start_done.wait()
@@ -532,6 +543,8 @@ class MainView:
 
     # -- rendering ---------------------------------------------------------
     def render(self, state: UiViewState) -> None:
+        if not state.replay_active:
+            self._replay_repeater.cancel()
         self.state_text.value = state.state_label
 
         self.kind_button.selected = [state.input_kind]
@@ -597,19 +610,37 @@ class MainView:
         self.replay_slider.disabled = duration_seconds <= 0 or replay.action_pending
         self.replay_fps_text.value = f"{replay.fps_text} fps"
         self.replay_play_button.content = "Play" if replay.paused else "Pause"
-        for button in (
-            self.replay_back20_button,
-            self.replay_back1_button,
-            self.replay_play_button,
-            self.replay_forward1_button,
-            self.replay_forward20_button,
-            self.set_point_button,
-            self.resume_button,
-        ):
+        for button in (self.replay_play_button, self.set_point_button, self.resume_button):
             button.disabled = replay.action_pending
         self.set_point_text.value = replay.set_point_text
         self.time_difference_text.value = replay.time_difference_text
         self.frame_difference_text.value = replay.frame_difference_text
+
+    def _repeat_button(
+        self, label: str, action: Callable[[], Awaitable[None]], interval: float
+    ) -> tuple[ft.FilledButton, ft.GestureDetector]:
+        button = ft.FilledButton(content=label)
+        gesture = ft.GestureDetector(
+            content=button,
+            on_tap_down=lambda _event: self._start_replay_repeat(action, interval),
+            on_tap_up=lambda _event: self._stop_replay_repeat(),
+            on_tap_cancel=lambda _event: self._stop_replay_repeat(),
+        )
+        return button, gesture
+
+    def _start_replay_repeat(self, action: Callable[[], Awaitable[None]], interval: float) -> None:
+        self._replay_repeater.start(
+            lambda: self._run_replay_action_async(action),
+            delay=REPLAY_REPEAT_DELAY_SECONDS,
+            interval=interval,
+        )
+
+    def _stop_replay_repeat(self) -> None:
+        self._replay_repeater.cancel()
+
+    async def _run_replay_action_async(self, action: Callable[[], Awaitable[None]]) -> None:
+        if self.is_active:
+            await action()
 
     # -- action handlers ---------------------------------------------------
     def _on_kind_change(self, event: ft.Event) -> None:
@@ -655,6 +686,7 @@ class MainView:
         await self._run_action(self.session.request_replay)
 
     def _on_resume(self, event: ft.Event) -> None:
+        self._stop_replay_repeat()
         self._run_task(self._resume)
 
     async def _resume(self) -> None:
