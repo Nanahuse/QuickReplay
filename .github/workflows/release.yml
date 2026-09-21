@@ -39,29 +39,40 @@ jobs:
           }
           "version=$current" >> $env:GITHUB_OUTPUT
           $tag = "v$current"
-          gh api "repos/${{ github.repository }}/git/ref/tags/$tag" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            "release=false" >> $env:GITHUB_OUTPUT
-            Write-Host "Tag $tag already exists; no release required."
+          $tagResponse = gh api "repos/${{ github.repository }}/git/ref/tags/$tag" --include 2>&1
+          $tagExitCode = $LASTEXITCODE
+          $LASTEXITCODE = 0
+          if ($tagExitCode -eq 0) {
+            $tagExists = $true
+          } elseif ($tagResponse -match "404|Not Found") {
+            $tagExists = $false
           } else {
-            "release=true" >> $env:GITHUB_OUTPUT
-            Write-Host "Tag $tag does not exist; release required."
+            throw "Failed to check tag $tag: $tagResponse"
           }
 
-      - name: Check for duplicate tag or release
-        if: steps.version.outputs.release == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          $tag = "v${{ steps.version.outputs.version }}"
-          gh api "repos/${{ github.repository }}/git/ref/tags/$tag" *> $null
-          if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists." }
-          gh release view $tag --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          $releaseResponse = gh api "repos/${{ github.repository }}/releases/tags/$tag" --include 2>&1
+          $releaseExitCode = $LASTEXITCODE
+          $LASTEXITCODE = 0
+          if ($releaseExitCode -eq 0) {
+            $releaseExists = $true
+          } elseif ($releaseResponse -match "404|Not Found") {
+            $releaseExists = $false
+          } else {
+            throw "Failed to check release $tag: $releaseResponse"
+          }
+
+          if ($releaseExists -and -not $tagExists) {
+            throw "Inconsistent release state: release $tag exists without its tag."
+          }
+
+          $releaseRequired = -not $releaseExists
+          $tagRequired = -not $tagExists
+          "release_required=$($releaseRequired.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "tag_required=$($tagRequired.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          Write-Host "Tag exists: $tagExists; release exists: $releaseExists"
 
       - name: Build Windows app
-        if: steps.version.outputs.release == 'true'
+        if: steps.version.outputs.release_required == 'true'
         env:
           PYTHONIOENCODING: utf-8
         run: |
@@ -69,18 +80,18 @@ jobs:
           uv run flet build windows --python-version 3.14 --yes
 
       - name: Create portable distribution ZIP
-        if: steps.version.outputs.release == 'true'
+        if: steps.version.outputs.release_required == 'true'
         run: uv run python tools/package_windows_release.py
 
       - name: Verify release ZIP
-        if: steps.version.outputs.release == 'true'
+        if: steps.version.outputs.release_required == 'true'
         shell: pwsh
         run: |
           $zip = "dist/QuickReplay-${{ steps.version.outputs.version }}-windows-x64.zip"
           if (-not (Test-Path $zip)) { throw "Release ZIP was not generated: $zip" }
 
       - name: Create tag
-        if: steps.version.outputs.release == 'true'
+        if: steps.version.outputs.tag_required == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -90,10 +101,10 @@ jobs:
           git push origin "v$env:VERSION"
 
       - name: Create GitHub Release
-        if: steps.version.outputs.release == 'true'
+        if: steps.version.outputs.release_required == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v${{ steps.version.outputs.version }}"
           $zip = "dist/QuickReplay-${{ steps.version.outputs.version }}-windows-x64.zip"
-          gh release create $tag $zip --repo "${{ github.repository }}" --title "QuickReplay $tag" --generate-notes
+          gh release create $tag $zip --repo "${{ github.repository }}" --verify-tag --title "QuickReplay $tag" --generate-notes
