@@ -184,6 +184,12 @@ def test_change_input_starts_a_new_session(tmp_path: Path) -> None:
         assert factory.calls == 2
         assert started.request_id == request_id
         assert factory.sources[0].close_count >= 1
+        # The previous session was fully cleaned up: only the new session
+        # directory remains and no writer temporary file is left behind.
+        settings = _settings(tmp_path)
+        directories = [entry for entry in settings.buffer_root.iterdir() if entry.is_dir()]
+        assert len(directories) == 1
+        assert list(settings.buffer_root.rglob("*.tmp.mkv")) == []
     finally:
         harness.shutdown()
 
@@ -295,6 +301,7 @@ def test_shutdown_during_recording(tmp_path: Path) -> None:
     assert not harness.thread.is_alive()
     assert factory.sources[0].close_count >= 1
     assert list(settings.buffer_root.iterdir()) == []
+    assert list(settings.buffer_root.rglob("*.tmp.mkv")) == []
 
 
 def test_shutdown_after_replay_removes_asset(tmp_path: Path) -> None:
