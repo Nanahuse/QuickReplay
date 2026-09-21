@@ -454,8 +454,9 @@ class UiSession:
         """Pause playback before applying a frame-relative replay action."""
 
         async def paused_action() -> None:
-            if not await self._bridge.is_paused():
+            if self._replay_paused is not True:
                 await self._bridge.pause()
+                self._replay_paused = True
             await action()
 
         await self._run_replay_action(paused_action)

@@ -5,7 +5,7 @@ import asyncio
 from quickreplay.ui.replay_repeat import ReplayActionRepeater
 
 
-def test_repeater_runs_sequentially_and_stops_after_cancel() -> None:
+def test_repeater_runs_immediately_and_stops_after_release() -> None:
     async def scenario() -> None:
         actions: list[str] = []
         gates: list[asyncio.Event] = []
@@ -19,7 +19,7 @@ def test_repeater_runs_sequentially_and_stops_after_cancel() -> None:
             actions.append("action")
 
         repeater = ReplayActionRepeater(sleep=sleep)
-        repeater.start(action, delay=0.5, interval=0.085)
+        repeater.start(action, interval=0.085)
         await asyncio.sleep(0)
         assert actions == ["action"]
         assert len(gates) == 1
@@ -30,9 +30,11 @@ def test_repeater_runs_sequentially_and_stops_after_cancel() -> None:
         assert actions == ["action", "action"]
         assert len(gates) == 2
 
-        await repeater.stop()
+        repeater.release()
         gates[1].set()
         await asyncio.sleep(0)
         assert actions == ["action", "action"]
+
+        await repeater.stop()
 
     asyncio.run(scenario())

@@ -31,7 +31,6 @@ POLL_INTERVAL_REPLAY_SECONDS = 0.05
 _EMPTY = "—"
 _NANOSECONDS_PER_SECOND = 1_000_000_000
 _DESTROYED_SESSION_MARKER = "destroyed session"
-REPLAY_REPEAT_DELAY_SECONDS = 0.500
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
@@ -103,6 +102,7 @@ class MainView:
         self._starting = False
         self._start_done = asyncio.Event()
         self._replay_repeater = ReplayActionRepeater()
+        self._replay_repeat_active = False
 
         self.state_text = ft.Text("", weight=ft.FontWeight.BOLD)
         self.kind_button = ft.SegmentedButton(
@@ -545,6 +545,7 @@ class MainView:
     def render(self, state: UiViewState) -> None:
         if not state.replay_active:
             self._replay_repeater.release()
+            self._replay_repeat_active = False
         self.state_text.value = state.state_label
 
         self.kind_button.selected = [state.input_kind]
@@ -607,22 +608,29 @@ class MainView:
             self.replay_slider.value = replay.position_ns / _NANOSECONDS_PER_SECOND
 
         duration_seconds = replay.duration_ns / _NANOSECONDS_PER_SECOND
-        self.replay_slider.disabled = duration_seconds <= 0 or replay.action_pending
+        self.replay_slider.disabled = duration_seconds <= 0 or self._replay_repeat_active
         self.replay_fps_text.value = f"{replay.fps_text} fps"
         self.replay_play_button.content = "Play" if replay.paused else "Pause"
-        for button in (self.replay_play_button, self.set_point_button, self.resume_button):
-            button.disabled = replay.action_pending
+        self.replay_play_button.disabled = self._replay_repeat_active
+        self.set_point_button.disabled = self._replay_repeat_active
+        self.resume_button.disabled = False
         self.set_point_text.value = replay.set_point_text
         self.time_difference_text.value = replay.time_difference_text
         self.frame_difference_text.value = replay.frame_difference_text
 
     def _repeat_button(
         self, label: str, action: Callable[[], Awaitable[None]], interval: float
-    ) -> tuple[ft.FilledButton, ft.GestureDetector]:
-        button = ft.FilledButton(content=label)
+    ) -> tuple[ft.Container, ft.GestureDetector]:
+        button = ft.Container(
+            content=ft.Text(label, color=ft.Colors.ON_PRIMARY),
+            bgcolor=ft.Colors.PRIMARY,
+            padding=ft.Padding(left=16, right=16, top=10, bottom=10),
+            border_radius=ft.BorderRadius(top_left=4, top_right=4, bottom_left=4, bottom_right=4),
+        )
         gesture = ft.GestureDetector(
             content=button,
-            on_long_press_down=lambda _event: self._start_replay_repeat(action, interval),
+            on_tap=lambda _event: self._run_task(self._run_replay_action_async, action),
+            on_long_press_start=lambda _event: self._start_replay_repeat(action, interval),
             on_long_press_end=lambda _event: self._stop_replay_repeat(),
             on_long_press_cancel=lambda _event: self._stop_replay_repeat(),
         )
@@ -631,12 +639,21 @@ class MainView:
     def _start_replay_repeat(self, action: Callable[[], Awaitable[None]], interval: float) -> None:
         self._replay_repeater.start(
             lambda: self._run_replay_action_async(action),
-            delay=REPLAY_REPEAT_DELAY_SECONDS,
             interval=interval,
         )
+        self._replay_repeat_active = True
+        self._refresh_replay_controls()
 
     def _stop_replay_repeat(self) -> None:
         self._replay_repeater.release()
+        self._replay_repeat_active = False
+        self._refresh_replay_controls()
+
+    def _refresh_replay_controls(self) -> None:
+        disabled = self._replay_repeat_active
+        self.replay_play_button.disabled = disabled
+        self.set_point_button.disabled = disabled
+        self.replay_slider.disabled = disabled
 
     async def _run_replay_action_async(self, action: Callable[[], Awaitable[None]]) -> None:
         if self.is_active:

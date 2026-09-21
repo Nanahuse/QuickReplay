@@ -8,7 +8,7 @@ Sleep = Callable[[float], Awaitable[None]]
 
 
 class ReplayActionRepeater:
-    """Run one action immediately, then sequentially while the press is held."""
+    """Run an action immediately and repeat it until released."""
 
     def __init__(self, *, sleep: Sleep = asyncio.sleep) -> None:
         self._sleep = sleep
@@ -17,19 +17,19 @@ class ReplayActionRepeater:
 
     @property
     def active(self) -> bool:
-        return self._task is not None and not self._task.done()
+        return self._task is not None and not self._task.done() and self._held
 
-    def start(self, action: Action, *, delay: float, interval: float) -> None:
+    def start(self, action: Action, *, interval: float) -> None:
         self.release()
         self._held = True
-        self._task = asyncio.create_task(self._run(action, delay=delay, interval=interval))
+        self._task = asyncio.create_task(self._run(action, interval=interval))
 
     def release(self) -> None:
         """Stop future repetitions without interrupting the current action."""
         self._held = False
 
     def cancel(self) -> None:
-        """Cancel the task immediately for backwards-compatible shutdown use."""
+        """Cancel the task immediately for application shutdown."""
         self._held = False
         if self._task is not None:
             self._task.cancel()
@@ -47,13 +47,11 @@ class ReplayActionRepeater:
         except asyncio.CancelledError:
             pass
 
-    async def _run(self, action: Action, *, delay: float, interval: float) -> None:
+    async def _run(self, action: Action, *, interval: float) -> None:
         await action()
         if not self._held:
             return
-        await self._sleep(delay)
         while self._held:
-            await action()
-            if not self._held:
-                return
             await self._sleep(interval)
+            if self._held:
+                await action()
