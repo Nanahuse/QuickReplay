@@ -72,6 +72,9 @@ class SegmentRecorder:
 
         self._last_video_session_ns: int | None = None
         self._last_audio_session_ns: int | None = None
+        # End of the accepted audio sample timeline for the whole session.
+        # This intentionally survives segment rotation.
+        self._accepted_audio_end_sample: int | None = None
         # Buffered audio chunks: (start_sample, float32 planar data).
         self._audio_chunks: list[tuple[int, np.ndarray]] = []
 
@@ -93,6 +96,7 @@ class SegmentRecorder:
         if audio is not None:
             self._sample_rate = audio.sample_rate
             self._channels = audio.channels
+            self._accepted_audio_end_sample = None
 
     def push_video(self, frame: VideoFrame) -> tuple[Segment, ...]:
         """Feed a video frame, returning any segment finalized by rotation."""
@@ -134,8 +138,8 @@ class SegmentRecorder:
         self._last_video_session_ns = session_ns
         return tuple(finalized)
 
-    def push_audio(self, frame: AudioFrame) -> tuple[Segment, ...]:
-        """Feed an audio frame.  Audio never drives segment rotation."""
+    def push_audio(self, frame: AudioFrame) -> int:
+        """Feed an audio frame and return the number of accepted samples."""
         self._require_active()
         epoch_ns = self._epoch_ns
         assert epoch_ns is not None
@@ -161,7 +165,23 @@ class SegmentRecorder:
                 f"({self._channels}, {frame.sample_count})"
             )
         start_sample = self._sample_position(session_ns)
-        self._audio_chunks.append((start_sample, np.ascontiguousarray(data, dtype=np.float32)))
+        end_sample = start_sample + frame.sample_count
+        accepted_start = start_sample
+        accepted_data = np.ascontiguousarray(data, dtype=np.float32)
+        accepted_end = self._accepted_audio_end_sample
+        if accepted_end is not None:
+            if end_sample <= accepted_end:
+                return 0
+            if start_sample < accepted_end:
+                overlap = accepted_end - start_sample
+                accepted_start = accepted_end
+                accepted_data = accepted_data[:, overlap:]
+
+        accepted_samples = int(accepted_data.shape[1])
+        if accepted_samples == 0:
+            return 0
+        self._accepted_audio_end_sample = accepted_start + accepted_samples
+        self._audio_chunks.append((accepted_start, accepted_data))
 
         if self._current_writer is not None:
             # Audio before the current last video frame is definitely part of
@@ -169,7 +189,7 @@ class SegmentRecorder:
             # fixes the boundary (or until finish trims it).
             assert self._last_video_session_ns is not None
             self._flush_audio_until(self._last_video_session_ns)
-        return ()
+        return accepted_samples
 
     def finish(self) -> Segment | None:
         """Finalize the last segment and return it (or ``None`` if no video)."""
