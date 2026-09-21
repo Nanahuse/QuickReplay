@@ -36,6 +36,7 @@ def mpv_launch_arguments(executable: Path | str, endpoint: str, asset_path: Path
         str(executable),
         "--no-config",
         "--terminal=no",
+        "--osc=no",
         f"--input-ipc-server={endpoint}",
         "--pause=yes",
         "--keep-open=yes",
