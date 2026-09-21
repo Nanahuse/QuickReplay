@@ -1,6 +1,7 @@
 # QuickReplay
 
-QuickReplay Version 2 is under development.
+QuickReplay Version 2 is a Windows desktop instant replay application for NDI
+and camera inputs.
 
 Version 2 is a rewrite of QuickReplay.  The previous Version 1 implementation
 has been removed from this repository.  The core domain model, the segment
@@ -52,12 +53,22 @@ application from a clean Flet build with:
 
 ```powershell
 uv run flet clean
-uv run flet build windows --python-version 3.14 --build-version 2.0.0
+uv run flet build windows --python-version 3.14
 ```
 
 The packaged application is generated under `build/windows` as
 `QuickReplay.exe`. The build uses the dependencies declared in
 `pyproject.toml`; no separate `requirements.txt` is needed.
+
+### Runtime requirements
+
+The packaged application does not require Python, uv, or Visual Studio to run.
+Replay playback requires an external mpv executable, which can be configured
+from Settings. mpv is not bundled in the distribution ZIP.
+
+NDI input uses the NDI runtime available to the packaged application through
+the existing `ndi-python` integration; this phase does not introduce a new NDI
+distribution mechanism.
 
 ## Test
 
