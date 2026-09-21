@@ -34,9 +34,15 @@ class InputsDiscovered:
 
 @dataclass(frozen=True, slots=True)
 class StreamStarted:
-    """The input stream has started and its format is known."""
+    """The input stream has started and its format is known.
+
+    ``request_id`` correlates the event with a ``ResumeRecording`` or
+    ``ChangeInput`` command so a stale asynchronous response can be ignored.
+    ``StartRecording`` leaves it ``None``.
+    """
 
     stream_info: StreamInfo
+    request_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
