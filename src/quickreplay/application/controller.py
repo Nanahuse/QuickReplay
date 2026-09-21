@@ -252,7 +252,7 @@ class ApplicationController:
         self._send(ChangeInput(request_id, input_config))
         return request_id
 
-    def discover_inputs(self) -> UUID:
+    def discover_inputs(self, *, camera_backend: str = "any") -> UUID:
         """Request the list of available inputs (allowed while recording/replaying)."""
         if self._state not in (
             ApplicationState.IDLE,
@@ -264,7 +264,7 @@ class ApplicationController:
             )
         request_id = self._request_id_factory()
         self._pending_discovery_ids.add(request_id)
-        self._send(DiscoverInputs(request_id))
+        self._send(DiscoverInputs(request_id, camera_backend))
         return request_id
 
     def shutdown(self) -> None:

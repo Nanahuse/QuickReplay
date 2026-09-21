@@ -216,7 +216,7 @@ class WorkerHarness:
         settings: RecorderWorkerSettings,
         *,
         input_factory: Callable[[InputConfig], InputSourceHandle],
-        discovery: Callable[[], tuple[Any, ...]] | None = None,
+        discovery: Callable[..., tuple[Any, ...]] | None = None,
         builder_factory: Callable[[], ReplayAssetBuilder] = ReplayAssetBuilder,
     ) -> None:
         self.commands: queue.Queue[Any] = queue.Queue()
@@ -227,7 +227,7 @@ class WorkerHarness:
             command_queue=self.commands,
             emit=self._emit,
             input_factory=input_factory,
-            discovery=discovery or (lambda: ()),
+            discovery=discovery or (lambda **_kwargs: ()),
             builder_factory=builder_factory,
         )
         self.thread = threading.Thread(target=self.runtime.run, daemon=True)

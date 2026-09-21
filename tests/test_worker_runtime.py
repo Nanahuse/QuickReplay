@@ -193,7 +193,7 @@ def test_discover_inputs(tmp_path: Path) -> None:
     harness = WorkerHarness(
         _settings(tmp_path),
         input_factory=ScriptedInputFactory(),
-        discovery=lambda: (descriptor,),
+        discovery=lambda **_kwargs: (descriptor,),
     )
     try:
         harness.start()
