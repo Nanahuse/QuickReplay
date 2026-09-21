@@ -1,6 +1,7 @@
 """Desktop bootstrap: configuration, settings and application wiring."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -53,9 +54,15 @@ def test_bootstrap_broken_config_raises(tmp_path: Path) -> None:
 
 def test_bootstrap_runtime_directory(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
+    captured: list[Any] = []
 
-    boot = bootstrap_application(paths=paths)
+    def controller_factory(settings: Any) -> Any:
+        captured.append(settings)
+        return object()
 
-    settings = boot.controller  # constructing does not start the worker
-    assert settings is not None
-    assert paths.runtime_directory == tmp_path / "cache" / "runtime"
+    bootstrap_application(paths=paths, controller_factory=controller_factory)
+
+    assert len(captured) == 1
+    settings = captured[0]
+    assert settings.worker is not None
+    assert settings.worker.working_directory == paths.runtime_directory

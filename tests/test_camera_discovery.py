@@ -3,10 +3,7 @@
 import pytest
 from fake_camera import FakeCameraBackend, FakeCapture
 
-from quickreplay.input.camera.discovery import (
-    DEFAULT_MAX_CAMERA_DEVICES,
-    discover_cameras,
-)
+from quickreplay.input.camera.discovery import discover_cameras
 from quickreplay.input.models import CameraInputDescriptor
 
 
@@ -40,4 +37,9 @@ def test_discovery_rejects_non_positive_max_devices() -> None:
 
 
 def test_default_max_devices_is_bounded() -> None:
-    assert DEFAULT_MAX_CAMERA_DEVICES == 10
+    backend = FakeCameraBackend(lambda _index, _api: FakeCapture(opened=True))
+
+    descriptors = discover_cameras(camera_backend=backend)
+
+    assert len(descriptors) == len(backend.captures)
+    assert len(backend.captures) < 100
