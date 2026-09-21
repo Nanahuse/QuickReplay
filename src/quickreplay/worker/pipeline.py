@@ -17,7 +17,7 @@ from quickreplay.input.models import AudioFrame, CaptureItem, InputConfig, Strea
 from quickreplay.input.source import InputSource
 from quickreplay.recording.models import RecordingMetrics, RecordingSession, Segment
 from quickreplay.recording.ring_storage import RingStorage
-from quickreplay.recording.segment_recorder import SegmentRecorder
+from quickreplay.recording.segment_recorder import SegmentRecorder, WriterFactory
 from quickreplay.worker.errors import (
     PipelineFormatChangeError,
     PipelineOrderingError,
@@ -53,10 +53,12 @@ class RecordingPipeline:
         settings: RecorderWorkerSettings,
         *,
         input_factory: Callable[[InputConfig], InputSourceHandle] = open_input_source,
+        writer_factory: WriterFactory | None = None,
         clock: Callable[[], int] = CLOCK,
     ) -> None:
         self._settings = settings
         self._input_factory = input_factory
+        self._writer_factory = writer_factory
         self._clock = clock
 
         self._source: InputSource | None = None
@@ -75,6 +77,7 @@ class RecordingPipeline:
 
         self._fatal: BaseException | None = None
         self._active = False
+        self._stopped = False
 
         self._metrics = _MetricsState()
         self._metrics_lock = threading.Lock()
@@ -146,7 +149,10 @@ class RecordingPipeline:
             directory.mkdir(parents=True, exist_ok=True)
             session = RecordingSession(session_id, info, first_video_ts, directory)
             ring = RingStorage(buffer_duration_ns=settings.buffer_duration_ns)
-            recorder = SegmentRecorder(segment_duration_ns=settings.segment_duration_ns)
+            recorder = SegmentRecorder(
+                segment_duration_ns=settings.segment_duration_ns,
+                writer_factory=self._writer_factory,
+            )
             recorder.start(session)
 
             self._session = session
@@ -168,8 +174,17 @@ class RecordingPipeline:
             raise
 
     def stop(self) -> None:
-        """Stop capture, drain the queues, finalize and stop encoding."""
+        """Stop capture, drain the queues, finalize and stop encoding.
+
+        On return, no capture/encode thread is running and the recorder and its
+        writers have been finalized and closed, so the session directory is
+        safe to remove.  If finalization failed during the stop, that first
+        failure is raised instead of being treated as a clean stop.
+        """
+        if self._stopped:
+            return
         if self._source is None and self._capture_thread is None:
+            self._stopped = True
             return
         self._stop_event.set()
         self._join_capture()
@@ -178,9 +193,16 @@ class RecordingPipeline:
             queues.begin_drain()
         self._join_encode()
         self._active = False
+        self._stopped = True
+        fatal = self._fatal
+        if fatal is not None:
+            raise fatal
 
     def abort(self) -> None:
         """Best-effort stop used on failure paths.  Never raises."""
+        if self._stopped:
+            return
+        self._stopped = True
         self._stop_event.set()
         try:
             self._join_capture()

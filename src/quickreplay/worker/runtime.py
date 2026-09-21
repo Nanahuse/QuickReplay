@@ -7,7 +7,6 @@ or native objects cross this boundary.
 """
 
 import queue
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
@@ -36,6 +35,7 @@ from quickreplay.recording.models import RecordingSession, WorkerErrorCode, Work
 from quickreplay.replay.asset_builder import ReplayAssetBuilder
 from quickreplay.replay.models import ReplaySnapshot
 from quickreplay.worker.errors import WorkerPipelineError, map_worker_error
+from quickreplay.worker.fs import remove_tree
 from quickreplay.worker.inputs import InputSourceHandle, discover_inputs, open_input_source
 from quickreplay.worker.pipeline import CLOCK, RecordingPipeline
 from quickreplay.worker.settings import RecorderWorkerSettings
@@ -281,8 +281,7 @@ class RecorderWorkerRuntime:
     def _remove_session_directory(self, session: RecordingSession | None) -> None:
         if session is None:
             return
-        if session.directory.exists():
-            shutil.rmtree(session.directory)
+        remove_tree(session.directory)
 
     def _purge_replay_root(self) -> None:
         root = self._settings.replay_root
@@ -290,9 +289,12 @@ class RecorderWorkerRuntime:
             return
         for entry in root.iterdir():
             if entry.is_dir():
-                shutil.rmtree(entry)
+                remove_tree(entry)
             else:
                 entry.unlink()
 
     def _remove_path_quietly(self, path: Path) -> None:
-        shutil.rmtree(path, ignore_errors=True)
+        try:
+            remove_tree(path)
+        except OSError:
+            pass
