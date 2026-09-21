@@ -33,6 +33,8 @@ jobs:
           "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Build Windows app
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           uv run flet clean
           uv run flet build windows --python-version 3.14 --yes
