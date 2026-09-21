@@ -7,8 +7,9 @@ has been removed from this repository.  The core domain model, the segment
 recording core, the ring storage / retention core, the replay asset
 (stream-copy remux) core, the NDI input core, the camera input core and the
 headless recorder worker (separate process, capture/encode threads, bounded
-queues, replay preparation) are implemented.  Replay playback / control and the
-UI are not implemented yet.
+queues, replay preparation) and the mpv-based replay controller (external mpv
+process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
+application-level orchestration and the UI are not implemented yet.
 
 ## Requirements
 
@@ -62,7 +63,7 @@ src/
    │  ├─ ndi/       # NDI discovery, receiver and frame conversion
    │  └─ camera/    # camera discovery, OpenCV capture and frame conversion
    ├─ recording/    # segment/session models, segment recorder, worker protocol
-   ├─ replay/       # replay snapshot/asset models and the replay asset builder
+   ├─ replay/       # replay models, asset builder, remux and mpv controller
    ├─ worker/       # recorder worker process, pipeline and frame queues
    └─ units.py      # nanosecond / Fraction helpers
 tests/
