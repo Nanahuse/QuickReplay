@@ -1,0 +1,48 @@
+name: Windows Build
+
+on:
+  pull_request:
+    branches:
+      - feature/version2
+  push:
+    branches:
+      - feature/version2
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Sync locked dependencies
+        run: uv sync --locked
+
+      - name: Read project version
+        shell: pwsh
+        run: |
+          $version = uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Build Windows app
+        run: |
+          uv run flet clean
+          uv run flet build windows --python-version 3.14
+
+      - name: Create portable distribution ZIP
+        run: uv run python tools/package_windows_release.py
+
+      - name: Upload Windows distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickReplay-${{ env.RELEASE_VERSION }}-windows-x64
+          path: dist/QuickReplay-*-windows-x64.zip
+          if-no-files-found: error

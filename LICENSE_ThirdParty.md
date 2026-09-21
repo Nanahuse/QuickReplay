@@ -10,26 +10,48 @@ https://github.com/numpy/numpy/blob/main/LICENSE.txt
 MIT License  
 https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt
 
-# Pillow / PIL
-Historical Permission Notice and Disclaimer (HPND)   
-https://github.com/python-pillow/Pillow/blob/main/LICENSE  
+# Third-party notices
 
-# TCL/TK
-Tcl/Tk License  
-https://fedoraproject.org/wiki/Licensing:TCL
+This file lists the primary third-party components used by the QuickReplay
+Version 2 runtime and Windows package.
 
-# ttkbootstrap
-MIT License  
-https://github.com/israel-dryer/ttkbootstrap/blob/master/LICENSE
+## Python
 
-# windows-capture-device-list (python-capture-device-list)
-MIT License  
-https://github.com/yushulx/python-capture-device-list/blob/master/LICENSE
+Python Software Foundation License<br>
+https://docs.python.org/3/license.html#psf-license
 
-# ndi-python
-MIT License  
+## Flet
+
+Apache License 2.0<br>
+https://github.com/flet-dev/flet/blob/main/LICENSE
+
+## PyAV
+
+BSD 3-Clause License<br>
+https://github.com/PyAV-Org/PyAV/blob/main/LICENSE.txt
+
+## NumPy
+
+BSD 3-Clause License<br>
+https://github.com/numpy/numpy/blob/main/LICENSE.txt
+
+## OpenCV / opencv-python
+
+Apache License 2.0 (OpenCV)<br>
+https://github.com/opencv/opencv/blob/4.x/LICENSE
+
+MIT License (opencv-python packaging)<br>
+https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt
+
+## ndi-python
+
+MIT License<br>
 https://github.com/buresu/ndi-python/blob/master/LICENSE
 
-# NDI SDK (bundled by ndi-python)
-NDI SDK License  
+## NDI SDK / NDI runtime
+
+NDI SDK License<br>
 https://ndi.video/for-developers/ndi-sdk/license/
+
+QuickReplay does not bundle mpv. Replay playback uses the external mpv
+executable configured by the user.
