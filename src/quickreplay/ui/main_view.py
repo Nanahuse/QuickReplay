@@ -544,7 +544,7 @@ class MainView:
     # -- rendering ---------------------------------------------------------
     def render(self, state: UiViewState) -> None:
         if not state.replay_active:
-            self._replay_repeater.cancel()
+            self._replay_repeater.release()
         self.state_text.value = state.state_label
 
         self.kind_button.selected = [state.input_kind]
@@ -619,13 +619,10 @@ class MainView:
     def _repeat_button(
         self, label: str, action: Callable[[], Awaitable[None]], interval: float
     ) -> tuple[ft.FilledButton, ft.GestureDetector]:
-        button = ft.FilledButton(
-            content=label,
-            on_click=lambda _event: self._run_task(self._run_replay_action_async, action),
-        )
+        button = ft.FilledButton(content=label)
         gesture = ft.GestureDetector(
             content=button,
-            on_long_press_start=lambda _event: self._start_replay_repeat(action, interval),
+            on_long_press_down=lambda _event: self._start_replay_repeat(action, interval),
             on_long_press_end=lambda _event: self._stop_replay_repeat(),
             on_long_press_cancel=lambda _event: self._stop_replay_repeat(),
         )
@@ -639,7 +636,7 @@ class MainView:
         )
 
     def _stop_replay_repeat(self) -> None:
-        self._replay_repeater.cancel()
+        self._replay_repeater.release()
 
     async def _run_replay_action_async(self, action: Callable[[], Awaitable[None]]) -> None:
         if self.is_active:

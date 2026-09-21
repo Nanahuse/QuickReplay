@@ -402,13 +402,13 @@ class UiSession:
         await self._run_replay_action(action)
 
     async def step_backward(self) -> None:
-        await self._run_replay_action(self._bridge.step_backward)
+        await self._run_frame_action(self._bridge.step_backward)
 
     async def step_forward(self) -> None:
-        await self._run_replay_action(self._bridge.step_forward)
+        await self._run_frame_action(self._bridge.step_forward)
 
     async def seek_frames(self, frames: int) -> None:
-        await self._run_replay_action(lambda: self._bridge.seek_frames(frames))
+        await self._run_frame_action(lambda: self._bridge.seek_frames(frames))
 
     async def seek_absolute_ns(self, position_ns: int) -> None:
         await self._run_replay_action(lambda: self._bridge.seek_absolute_ns(position_ns))
@@ -449,6 +449,16 @@ class UiSession:
         finally:
             self._replay_action_pending = False
             await self.refresh_replay_status()
+
+    async def _run_frame_action(self, action: Callable[[], Awaitable[None]]) -> None:
+        """Pause playback before applying a frame-relative replay action."""
+
+        async def paused_action() -> None:
+            if not await self._bridge.is_paused():
+                await self._bridge.pause()
+            await action()
+
+        await self._run_replay_action(paused_action)
 
     # -- internals ---------------------------------------------------------
     def _reset_replay_state(self) -> None:
