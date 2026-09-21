@@ -68,6 +68,36 @@ def format_buffer(current_ns: int, maximum_seconds: int) -> str:
     return f"{current_ns / NANOSECONDS_PER_SECOND:.1f} / {maximum_seconds} s"
 
 
+def format_duration_ns(value_ns: int) -> str:
+    """Format nanoseconds as ``MM:SS.mmm`` (or ``H:MM:SS.mmm`` for long values)."""
+    total_ms = abs(value_ns) // 1_000_000
+    millis = total_ms % 1000
+    total_seconds = total_ms // 1000
+    seconds = total_seconds % 60
+    total_minutes = total_seconds // 60
+    minutes = total_minutes % 60
+    hours = total_minutes // 60
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+    return f"{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def format_signed_duration_ns(value_ns: int) -> str:
+    """Format a signed duration: ``+00:00.750`` / ``-00:00.750`` / ``00:00.000``."""
+    if value_ns > 0:
+        return f"+{format_duration_ns(value_ns)}"
+    if value_ns < 0:
+        return f"-{format_duration_ns(value_ns)}"
+    return format_duration_ns(0)
+
+
+def format_signed_frames(value: int) -> str:
+    """Format a frame difference: ``+45`` / ``-12`` / ``0``."""
+    if value > 0:
+        return f"+{value}"
+    return str(value)
+
+
 def buffer_fraction(current_ns: int, maximum_seconds: int) -> float:
     """Buffer usage clamped to ``0.0 .. 1.0``."""
     if maximum_seconds <= 0:
