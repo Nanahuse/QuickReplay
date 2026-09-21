@@ -8,6 +8,7 @@ from quickreplay.app.state import ApplicationState
 from quickreplay.application.events import ApplicationEvent
 from quickreplay.application.models import ApplicationSnapshot
 from quickreplay.input.models import InputConfig
+from quickreplay.replay.models import SetPoint
 
 
 class FakeController:
@@ -63,6 +64,45 @@ class FakeController:
     def shutdown(self) -> None:
         self._record("shutdown")
 
+    # -- replay delegate ---------------------------------------------------
+    def play(self) -> None:
+        self._record("play")
+
+    def pause(self) -> None:
+        self._record("pause")
+
+    def is_paused(self) -> bool:
+        self._record("is_paused")
+        return True
+
+    def step_forward(self) -> None:
+        self._record("step_forward")
+
+    def step_backward(self) -> None:
+        self._record("step_backward")
+
+    def seek_frames(self, frames: int) -> None:
+        self._record("seek_frames")
+
+    def seek_absolute_ns(self, position_ns: int) -> None:
+        self._record("seek_absolute_ns")
+
+    def replay_position_ns(self) -> int:
+        self._record("replay_position_ns")
+        return 0
+
+    def set_point(self) -> SetPoint:
+        self._record("set_point")
+        return SetPoint(position_ns=0)
+
+    def time_difference_ns(self, point: SetPoint) -> int:
+        self._record("time_difference_ns")
+        return 0
+
+    def frame_difference(self, point: SetPoint) -> int:
+        self._record("frame_difference")
+        return 0
+
 
 class FakeBridge:
     """A scripted :class:`~quickreplay.ui.bridge.ApplicationUiBridge`."""
@@ -78,6 +118,25 @@ class FakeBridge:
         self.next_discovery_id = uuid4()
         self.shutdown_called = False
         self.closed = False
+
+        # -- replay recording --
+        self.play_calls = 0
+        self.pause_calls = 0
+        self.step_forward_calls = 0
+        self.step_backward_calls = 0
+        self.seek_frames_calls: list[int] = []
+        self.seek_absolute_calls: list[int] = []
+        self.set_point_calls = 0
+        self.position_calls = 0
+        self.is_paused_calls = 0
+        self.time_difference_points: list[SetPoint] = []
+        self.frame_difference_points: list[SetPoint] = []
+        self.position_value = 0
+        self.paused_value = True
+        self.set_point_value = 0
+        self.time_difference_value = 0
+        self.frame_difference_value = 0
+        self.position_error: BaseException | None = None
 
     async def start(self) -> None:
         self.started = True
@@ -111,3 +170,46 @@ class FakeBridge:
 
     async def close(self) -> None:
         self.closed = True
+
+    # -- replay delegate ---------------------------------------------------
+    async def play(self) -> None:
+        self.play_calls += 1
+        self.paused_value = False
+
+    async def pause(self) -> None:
+        self.pause_calls += 1
+        self.paused_value = True
+
+    async def is_paused(self) -> bool:
+        self.is_paused_calls += 1
+        return self.paused_value
+
+    async def step_forward(self) -> None:
+        self.step_forward_calls += 1
+
+    async def step_backward(self) -> None:
+        self.step_backward_calls += 1
+
+    async def seek_frames(self, frames: int) -> None:
+        self.seek_frames_calls.append(frames)
+
+    async def seek_absolute_ns(self, position_ns: int) -> None:
+        self.seek_absolute_calls.append(position_ns)
+
+    async def replay_position_ns(self) -> int:
+        self.position_calls += 1
+        if self.position_error is not None:
+            raise self.position_error
+        return self.position_value
+
+    async def set_point(self) -> SetPoint:
+        self.set_point_calls += 1
+        return SetPoint(position_ns=self.set_point_value)
+
+    async def time_difference_ns(self, point: SetPoint) -> int:
+        self.time_difference_points.append(point)
+        return self.time_difference_value
+
+    async def frame_difference(self, point: SetPoint) -> int:
+        self.frame_difference_points.append(point)
+        return self.frame_difference_value

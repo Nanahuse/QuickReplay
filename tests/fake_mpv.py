@@ -133,9 +133,15 @@ class FakeMpvState:
         self.pause = True
         self.duration: float | None = 2.0
         self.pause_changes: list[bool] = []
+        self.frame_step_seconds = 0.0
+        """Amount ``time-pos`` advances per frame-step (0 = no simulated advance)."""
 
     def handler(self, command: list[Any], request_id: int) -> dict[str, Any] | None:
-        if command and command[0] == "get_property":
+        if command and command[0] == "frame-step":
+            self.time_pos = (self.time_pos or 0.0) + self.frame_step_seconds
+        elif command and command[0] == "frame-back-step":
+            self.time_pos = (self.time_pos or 0.0) - self.frame_step_seconds
+        elif command and command[0] == "get_property":
             name = command[1] if len(command) > 1 else ""
             if name == "duration":
                 return {"error": "success", "data": self.duration}

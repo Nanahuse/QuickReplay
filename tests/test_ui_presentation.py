@@ -15,7 +15,10 @@ from quickreplay.ui.presentation import (
     control_state,
     format_audio,
     format_buffer,
+    format_duration_ns,
     format_fps,
+    format_signed_duration_ns,
+    format_signed_frames,
     format_stream_info,
     metrics_view,
     state_label,
@@ -122,3 +125,23 @@ def test_camera_backend_options() -> None:
     assert camera_backend_options("win32") == ("any", "msmf", "dshow")
     assert camera_backend_options("linux") == ("any", "v4l2")
     assert camera_backend_options("darwin") == ("any",)
+
+
+def test_format_duration_ns() -> None:
+    assert format_duration_ns(0) == "00:00.000"
+    assert format_duration_ns(1_000_000) == "00:00.001"
+    assert format_duration_ns(1_000_000_000) == "00:01.000"
+    assert format_duration_ns(61_234_000_000) == "01:01.234"
+    assert format_duration_ns(3_723_456_000_000) == "1:02:03.456"
+
+
+def test_format_signed_duration_ns() -> None:
+    assert format_signed_duration_ns(750_000_000) == "+00:00.750"
+    assert format_signed_duration_ns(-750_000_000) == "-00:00.750"
+    assert format_signed_duration_ns(0) == "00:00.000"
+
+
+def test_format_signed_frames() -> None:
+    assert format_signed_frames(45) == "+45"
+    assert format_signed_frames(-12) == "-12"
+    assert format_signed_frames(0) == "0"

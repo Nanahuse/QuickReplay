@@ -6,6 +6,7 @@ import pytest
 from fake_ui import FakeController
 
 from quickreplay.input.models import NdiInputConfig
+from quickreplay.replay.models import SetPoint
 from quickreplay.ui.bridge import ApplicationUiBridge
 
 
@@ -78,3 +79,42 @@ def test_start_recording_forwards_config() -> None:
     asyncio.run(run())
 
     assert controller.calls == ["start_recording"]
+
+
+def test_replay_calls_are_delegated_and_serialized() -> None:
+    controller = FakeController()
+    bridge = ApplicationUiBridge(controller)
+
+    async def run() -> None:
+        await asyncio.gather(
+            bridge.play(),
+            bridge.pause(),
+            bridge.is_paused(),
+            bridge.step_forward(),
+            bridge.step_backward(),
+            bridge.seek_frames(20),
+            bridge.seek_absolute_ns(1_250_000_000),
+            bridge.replay_position_ns(),
+            bridge.set_point(),
+            bridge.time_difference_ns(SetPoint(0)),
+            bridge.frame_difference(SetPoint(0)),
+        )
+        await bridge.close()
+
+    asyncio.run(run())
+
+    assert len(set(controller.threads)) == 1
+    assert controller.max_active == 1
+    assert set(controller.calls) == {
+        "play",
+        "pause",
+        "is_paused",
+        "step_forward",
+        "step_backward",
+        "seek_frames",
+        "seek_absolute_ns",
+        "replay_position_ns",
+        "set_point",
+        "time_difference_ns",
+        "frame_difference",
+    }
