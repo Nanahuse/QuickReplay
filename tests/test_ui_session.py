@@ -60,6 +60,18 @@ class _FailingStore(ConfigurationStore):
         raise ConfigurationWriteError("disk full")
 
 
+class _BlockingReplayBridge(FakeBridge):
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def step_forward(self) -> None:
+        self.entered.set()
+        await self.release.wait()
+        await super().step_forward()
+
+
 def _session(
     tmp_path: Path,
     *,
@@ -378,6 +390,24 @@ def test_step_forward_and_backward_once(tmp_path: Path) -> None:
 
     assert bridge.step_forward_calls == 1
     assert bridge.step_backward_calls == 1
+
+
+def test_replay_action_pending_blocks_only_overlapping_action(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        bridge = _BlockingReplayBridge()
+        session, _, _ = _session(tmp_path, bridge=bridge)
+        first = asyncio.create_task(session.step_forward())
+        await bridge.entered.wait()
+
+        await session.step_forward()
+        assert bridge.step_forward_calls == 0
+
+        bridge.release.set()
+        await first
+        await session.step_forward()
+        assert bridge.step_forward_calls == 2
+
+    asyncio.run(scenario())
 
 
 def test_seek_frames_passes_frame_counts(tmp_path: Path) -> None:

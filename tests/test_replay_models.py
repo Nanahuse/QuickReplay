@@ -74,3 +74,9 @@ def test_frame_difference_5994fps() -> None:
 def test_frame_difference_is_symmetric() -> None:
     fps = Fraction(60, 1)
     assert frame_difference(0, 2_050_000_000, fps) == -123
+
+
+def test_frame_difference_ties_away_from_zero() -> None:
+    half_frame_ns = 250_000_000
+    assert frame_difference(half_frame_ns, 0, Fraction(2, 1)) == 1
+    assert frame_difference(-half_frame_ns, 0, Fraction(2, 1)) == -1
