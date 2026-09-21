@@ -12,10 +12,12 @@ process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
 headless application controller orchestrates recording, replay preparation, mpv
 playback and recording resume.  Configuration persistence (versioned JSON
 schema v1, NDI/Camera input selection, recorder buffer setting, mpv executable
-setting, atomic save) is implemented.  A Flet 1.0 desktop UI foundation (input
-discovery and selection, camera backend selection, recording state, stream
-information and metrics, replay preparation and resume) is implemented.  The
-full replay control UI, settings editor and packaging are not implemented yet.
+setting, atomic save) is implemented.  A Flet 1.0 desktop UI is implemented:
+input discovery and selection, camera backend selection, recording state,
+stream information and metrics, replay preparation, and the replay control UI
+(Play/Pause, ±1 and ±20 frame steps, seek bar, Set Point, time and frame
+difference, resume).  The settings editor and packaging are not implemented
+yet.
 
 ## Requirements
 
