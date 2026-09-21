@@ -3,10 +3,7 @@ name: Windows Build
 on:
   pull_request:
     branches:
-      - feature/version2
-  push:
-    branches:
-      - feature/version2
+      - main
   workflow_dispatch:
 
 jobs:

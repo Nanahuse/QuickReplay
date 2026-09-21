@@ -1,15 +1,3 @@
-# Python
-Python Software Foundation License  
-https://docs.python.org/3/license.html#psf-license
-
-# Numpy
-BSD 3-Clause License  
-https://github.com/numpy/numpy/blob/main/LICENSE.txt
-
-# Opencv-Python
-MIT License  
-https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt
-
 # Third-party notices
 
 This file lists the primary third-party components used by the QuickReplay

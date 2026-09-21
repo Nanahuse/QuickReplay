@@ -1,12 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - feature/version2
   pull_request:
     branches:
-      - feature/version2
       - main
 
 jobs:
