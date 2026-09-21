@@ -9,7 +9,8 @@ recording core, the ring storage / retention core, the replay asset
 headless recorder worker (separate process, capture/encode threads, bounded
 queues, replay preparation) and the mpv-based replay controller (external mpv
 process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
-application-level orchestration and the UI are not implemented yet.
+headless application controller orchestrates recording, replay preparation, mpv
+playback and recording resume.  The UI is not implemented yet.
 
 ## Requirements
 
@@ -59,6 +60,7 @@ directly.
 src/
 └─ quickreplay/
    ├─ app/          # application state and view models
+   ├─ application/  # headless application controller (recording/replay lifecycle)
    ├─ input/        # input config, stream info, frame models, InputSource
    │  ├─ ndi/       # NDI discovery, receiver and frame conversion
    │  └─ camera/    # camera discovery, OpenCV capture and frame conversion
