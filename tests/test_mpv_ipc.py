@@ -3,6 +3,7 @@
 import json
 import os
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from fake_mpv import FakeProcess, FakeTransport
@@ -13,7 +14,7 @@ from quickreplay.replay.errors import (
     MpvIpcError,
     MpvProcessExitedError,
 )
-from quickreplay.replay.mpv_ipc import MpvIpcClient, make_ipc_endpoint, seconds_to_ns
+from quickreplay.replay.mpv_ipc import IPC_EOF, MpvIpcClient, make_ipc_endpoint, seconds_to_ns
 
 
 def _client(transport: FakeTransport, process: FakeProcess) -> MpvIpcClient:
@@ -121,6 +122,16 @@ def test_process_exit_during_command() -> None:
     client = _client(transport, process)
 
     with pytest.raises(MpvProcessExitedError):
+        client.get_property("time-pos")
+
+
+def test_ipc_eof_is_not_treated_as_a_command_timeout() -> None:
+    process = FakeProcess()
+    transport = FakeTransport(process=process)
+    transport._lines.put(cast(bytes | None, IPC_EOF))
+    client = _client(transport, process)
+
+    with pytest.raises(MpvProcessExitedError, match="IPC channel reached EOF"):
         client.get_property("time-pos")
 
 

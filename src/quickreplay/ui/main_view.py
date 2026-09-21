@@ -182,6 +182,32 @@ class MainView:
             visible=False,
         )
 
+        self.input_section = ft.Column(
+            controls=[
+                ft.Text("Input", weight=ft.FontWeight.BOLD),
+                self.kind_button,
+                ft.Row(controls=[self.source_dropdown, self.refresh_button]),
+                self.backend_dropdown,
+                self.start_button,
+            ],
+            spacing=10,
+        )
+        self.recording_section = ft.Column(
+            controls=[
+                ft.Text("Recording", weight=ft.FontWeight.BOLD),
+                self.stream_text,
+                self.audio_text,
+                ft.Row(controls=[ft.Text("Input FPS"), self.input_fps_text]),
+                ft.Row(controls=[ft.Text("Recording FPS"), self.recording_fps_text]),
+                ft.Row(controls=[ft.Text("Buffer"), self.buffer_text]),
+                self.buffer_bar,
+                ft.Row(controls=[ft.Text("Segments"), self.segments_text]),
+                ft.Row(controls=[ft.Text("Drops"), self.drops_text]),
+                self.replay_button,
+            ],
+            spacing=10,
+        )
+
         # Settings dialog (Flet-independent draft + validation live in the session).
         self._settings_camera_available = False
         self.settings_header_button = ft.FilledButton(
@@ -256,29 +282,17 @@ class MainView:
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Divider(),
-                ft.Text("Input", weight=ft.FontWeight.BOLD),
-                self.kind_button,
-                ft.Row(controls=[self.source_dropdown, self.refresh_button]),
-                self.backend_dropdown,
-                self.start_button,
-                ft.Divider(),
-                ft.Text("Recording", weight=ft.FontWeight.BOLD),
-                self.stream_text,
-                self.audio_text,
-                ft.Row(controls=[ft.Text("Input FPS"), self.input_fps_text]),
-                ft.Row(controls=[ft.Text("Recording FPS"), self.recording_fps_text]),
-                ft.Row(controls=[ft.Text("Buffer"), self.buffer_text]),
-                self.buffer_bar,
-                ft.Row(controls=[ft.Text("Segments"), self.segments_text]),
-                ft.Row(controls=[ft.Text("Drops"), self.drops_text]),
-                ft.Row(controls=[self.replay_button]),
-                ft.Divider(),
                 self.replay_panel,
+                ft.Divider(),
+                self.input_section,
+                ft.Divider(),
+                self.recording_section,
                 ft.Divider(),
                 self.status_text,
                 self.error_text,
             ],
             spacing=10,
+            scroll=ft.ScrollMode.AUTO,
         )
 
     # -- lifecycle ---------------------------------------------------------
@@ -542,6 +556,8 @@ class MainView:
         self.start_button.disabled = not state.controls.start_enabled
         self.replay_button.disabled = not state.controls.replay_enabled
         self.replay_button.visible = not state.replay_active
+        self.input_section.visible = not state.replay_active
+        self.recording_section.visible = not state.replay_active
 
         self._render_replay(state.replay)
 

@@ -297,6 +297,8 @@ class UiSession:
         elif previous_state == ApplicationState.REPLAY:
             # Leaving replay clears the transient replay UI state.
             self._reset_replay_state()
+            if self._snapshot.state != ApplicationState.ERROR:
+                self._error = None
 
     async def set_input_kind(self, kind: str) -> None:
         if kind not in (NDI_KIND, CAMERA_KIND) or kind == self._input_kind:

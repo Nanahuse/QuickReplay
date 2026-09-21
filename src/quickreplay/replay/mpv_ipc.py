@@ -26,6 +26,13 @@ from quickreplay.replay.errors import (
 _NANOSECONDS = Decimal(1_000_000_000)
 
 
+class _IpcEof:
+    """Sentinel returned when the IPC reader reaches end-of-file."""
+
+
+IPC_EOF = _IpcEof()
+
+
 def seconds_to_ns(value: Any) -> int:
     """Convert an mpv seconds value to integer nanoseconds.
 
@@ -61,7 +68,7 @@ class MpvIpcTransport(Protocol):
 
     def write_line(self, data: bytes) -> None: ...
 
-    def read_line(self, timeout: float) -> bytes | None: ...
+    def read_line(self, timeout: float) -> bytes | _IpcEof | None: ...
 
     def close(self) -> None: ...
 
@@ -75,7 +82,7 @@ class _LineReaderMixin:
     a lock that a write needs.
     """
 
-    _lines: queue.Queue[bytes | None]
+    _lines: queue.Queue[bytes | _IpcEof]
     _reader: threading.Thread | None
 
     def _start_reader(self) -> None:
@@ -101,9 +108,9 @@ class _LineReaderMixin:
         except Exception:  # noqa: BLE001 - stream closed during shutdown
             pass
         finally:
-            self._lines.put(None)
+            self._lines.put(IPC_EOF)
 
-    def read_line(self, timeout: float) -> bytes | None:
+    def read_line(self, timeout: float) -> bytes | _IpcEof | None:
         try:
             return self._lines.get(timeout=timeout)
         except queue.Empty:
@@ -116,7 +123,7 @@ class WindowsPipeTransport(_LineReaderMixin):
     def __init__(self) -> None:
         self._file: Any = None
         self._fd: int | None = None
-        self._lines: queue.Queue[bytes | None] = queue.Queue()
+        self._lines: queue.Queue[bytes | _IpcEof] = queue.Queue()
         self._reader = None
         self._closed = False
 
@@ -167,7 +174,7 @@ class UnixSocketTransport(_LineReaderMixin):
     def __init__(self) -> None:
         self._socket: socket.socket | None = None
         self._stream: Any = None
-        self._lines: queue.Queue[bytes | None] = queue.Queue()
+        self._lines: queue.Queue[bytes | _IpcEof] = queue.Queue()
         self._reader = None
         self._closed = False
 
@@ -290,6 +297,8 @@ class MpvIpcClient:
                 if self._process.poll() is not None:
                     raise MpvProcessExitedError("the mpv process exited during a command")
                 continue
+            if isinstance(line, _IpcEof):
+                raise MpvProcessExitedError("the mpv IPC channel reached EOF")
             self._handle_line(line, request_id, command)
 
     def _handle_line(self, line: bytes, request_id: int, command: list[object]) -> None:
