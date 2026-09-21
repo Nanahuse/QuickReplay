@@ -1,5 +1,6 @@
 """RecordingPipeline: bootstrap, A/V ordering, hold-back and failures."""
 
+import threading
 import time
 from collections.abc import Callable
 from fractions import Fraction
@@ -16,12 +17,14 @@ from fake_worker_input import (
 )
 
 from quickreplay.input.models import NdiInputConfig
+from quickreplay.recording.errors import SegmentMuxError
 from quickreplay.units import NANOSECONDS_PER_SECOND, round_fraction
 from quickreplay.worker.errors import (
     PipelineFormatChangeError,
     PipelineOrderingError,
     PipelineStartupError,
 )
+from quickreplay.worker.fs import remove_tree
 from quickreplay.worker.inputs import InputSourceHandle
 from quickreplay.worker.pipeline import RecordingPipeline
 from quickreplay.worker.settings import RecorderWorkerSettings
@@ -197,3 +200,125 @@ def test_pre_epoch_audio_is_dropped(tmp_path: Path) -> None:
         pipeline.abort()
     assert pipeline.poll_fatal() is None
     assert pipeline.metrics().captured_audio_samples == 1024
+
+
+class _FakeWriter:
+    """Test writer that can block or fail during finalize."""
+
+    def __init__(self, segment_id: int, directory: Path, *, gate, entered, error) -> None:
+        self.segment_id = segment_id
+        self._directory = Path(directory)
+        self._gate = gate
+        self._entered = entered
+        self._error = error
+
+    def write_video(self, frame, pts: int) -> None:
+        return None
+
+    def write_audio(self, data, pts: int) -> None:
+        return None
+
+    def finalize(self) -> Path:
+        if self._entered is not None:
+            self._entered.set()
+        if self._gate is not None:
+            self._gate.wait(timeout=5)
+        if self._error is not None:
+            raise self._error
+        path = self._directory / f"segment_{self.segment_id:06d}.mkv"
+        path.write_bytes(b"segment")
+        return path
+
+    def abort(self) -> None:
+        return None
+
+
+class _WriterFactory:
+    def __init__(self, *, gate=None, entered=None, error=None) -> None:
+        self._gate = gate
+        self._entered = entered
+        self._error = error
+
+    def __call__(self, segment_id: int, directory: Path, stream_info) -> _FakeWriter:
+        return _FakeWriter(
+            segment_id, directory, gate=self._gate, entered=self._entered, error=self._error
+        )
+
+
+def _pipeline_with_writer(
+    tmp_path: Path, source: FakeInputSource, writer_factory: _WriterFactory
+) -> RecordingPipeline:
+    settings = RecorderWorkerSettings(
+        working_directory=tmp_path,
+        segment_duration_ns=10_000_000_000,
+        video_queue_capacity=4096,
+        audio_queue_capacity=4096,
+    )
+    handle = InputSourceHandle(source=source, supports_audio=False)
+    return RecordingPipeline(
+        settings,
+        input_factory=lambda _config: handle,
+        writer_factory=writer_factory,
+    )
+
+
+def test_stop_waits_for_writer_finalize(tmp_path: Path) -> None:
+    gate = threading.Event()
+    entered = threading.Event()
+    script, _frames, _ = build_script(duration_ns=500_000_000, fps=FPS)
+    source = FakeInputSource(script, video_stream=video_info(FPS))
+    pipeline = _pipeline_with_writer(tmp_path, source, _WriterFactory(gate=gate, entered=entered))
+    pipeline.start(NdiInputConfig("fake"))
+    try:
+        _wait_until(lambda: pipeline.metrics().recorded_video_frames > 0)
+        errors: list[BaseException] = []
+
+        def do_stop() -> None:
+            try:
+                pipeline.stop()
+            except BaseException as exc:  # noqa: BLE001 - captured for assertion
+                errors.append(exc)
+
+        stopper = threading.Thread(target=do_stop)
+        stopper.start()
+        assert entered.wait(timeout=5)  # finalize has started
+        assert stopper.is_alive()  # stop() waits for finalization
+        gate.set()
+        stopper.join(timeout=5)
+        assert not stopper.is_alive()
+        assert errors == []
+    finally:
+        gate.set()
+        pipeline.abort()
+
+
+def test_stop_surfaces_writer_finalize_failure(tmp_path: Path) -> None:
+    script, _frames, _ = build_script(duration_ns=500_000_000, fps=FPS)
+    source = FakeInputSource(script, video_stream=video_info(FPS))
+    pipeline = _pipeline_with_writer(
+        tmp_path, source, _WriterFactory(error=SegmentMuxError("boom"))
+    )
+    pipeline.start(NdiInputConfig("fake"))
+    _wait_until(lambda: pipeline.metrics().recorded_video_frames > 0)
+
+    with pytest.raises(SegmentMuxError):
+        pipeline.stop()
+
+    assert isinstance(pipeline.poll_fatal(), SegmentMuxError)
+
+
+def test_stop_leaves_no_temp_files_and_is_removable(tmp_path: Path) -> None:
+    script, video_frames, _ = build_script(duration_ns=1_000_000_000, fps=FPS)
+    source = FakeInputSource(script, video_stream=video_info(FPS))
+    pipeline = _pipeline(tmp_path, source, supports_audio=False)
+    pipeline.start(NdiInputConfig("fake"))
+    _wait_until(lambda: pipeline.metrics().recorded_video_frames >= video_frames)
+    pipeline.stop()
+
+    session = pipeline.session
+    assert session is not None
+    assert pipeline.poll_fatal() is None
+    assert list(session.directory.glob("*.tmp.mkv")) == []
+    assert list(session.directory.glob("*.mkv"))
+    remove_tree(session.directory)  # immediate delete must succeed
+    assert not session.directory.exists()
