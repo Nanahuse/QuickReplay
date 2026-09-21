@@ -12,7 +12,10 @@ process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
 headless application controller orchestrates recording, replay preparation, mpv
 playback and recording resume.  Configuration persistence (versioned JSON
 schema v1, NDI/Camera input selection, recorder buffer setting, mpv executable
-setting, atomic save) is implemented.  The UI is not implemented yet.
+setting, atomic save) is implemented.  A Flet 1.0 desktop UI foundation (input
+discovery and selection, camera backend selection, recording state, stream
+information and metrics, replay preparation and resume) is implemented.  The
+full replay control UI, settings editor and packaging are not implemented yet.
 
 ## Requirements
 
@@ -27,6 +30,12 @@ and later.
 
 ```powershell
 uv sync
+```
+
+## Run the desktop app
+
+```powershell
+uv run flet run src/quickreplay/ui/app.py
 ```
 
 ## Test
@@ -70,6 +79,7 @@ src/
    ├─ recording/    # segment/session models, segment recorder, worker protocol
    ├─ replay/       # replay models, asset builder, remux and mpv controller
    ├─ worker/       # recorder worker process, pipeline and frame queues
+   ├─ ui/           # Flet 1.0 desktop UI (bootstrap, bridge, session, view)
    └─ units.py      # nanosecond / Fraction helpers
 tests/
 pyproject.toml

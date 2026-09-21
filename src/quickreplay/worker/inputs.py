@@ -51,14 +51,18 @@ def open_input_source(config: InputConfig) -> InputSourceHandle:
     )
 
 
-def discover_inputs() -> tuple[InputDescriptor, ...]:
+def discover_inputs(*, camera_backend: str = "any") -> tuple[InputDescriptor, ...]:
     """Discover NDI and camera inputs, skipping unavailable providers.
 
     A provider that cannot be queried is not a fatal error; discovery returns
-    whatever the remaining providers reported.
+    whatever the remaining providers reported.  ``camera_backend`` selects the
+    OpenCV backend used to probe cameras.
     """
     discovered: list[InputDescriptor] = []
-    providers = (discover_ndi_sources, discover_cameras)
+    providers = (
+        discover_ndi_sources,
+        lambda: discover_cameras(backend=camera_backend),
+    )
     for provider in providers:
         try:
             discovered.extend(provider())
