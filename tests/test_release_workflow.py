@@ -7,7 +7,8 @@ WORKFLOW = (Path(__file__).parents[1] / ".github" / "workflows" / "release.yml")
 )
 
 
-def test_release_workflow_uses_uv_version_for_current_and_previous_projects() -> None:
+def test_release_workflow_uses_uv_version_and_tag_existence() -> None:
     assert "uv version --short" in WORKFLOW
-    assert "uv version --project $previousProject --short" in WORKFLOW
+    assert "git/ref/tags/$tag" in WORKFLOW
+    assert "github.event.before" not in WORKFLOW
     assert "release_version.py" not in WORKFLOW

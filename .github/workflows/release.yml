@@ -29,33 +29,23 @@ jobs:
 
       - name: Detect version change
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $current = (uv version --short).Trim()
-          $previousProject = Join-Path $env:RUNNER_TEMP "quickreplay-previous-project"
-          New-Item -ItemType Directory -Force $previousProject | Out-Null
-          git show "${{ github.event.before }}:pyproject.toml" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            $previousText = git show "${{ github.event.before }}:pyproject.toml"
-            [IO.File]::WriteAllText(
-              (Join-Path $previousProject "pyproject.toml"),
-              ($previousText -join [Environment]::NewLine),
-              (New-Object Text.UTF8Encoding($false))
-            )
-            $previous = (uv version --project $previousProject --short).Trim()
-          } else {
-            $previous = ""
-          }
           if ([string]::IsNullOrWhiteSpace($current)) {
             throw "Current project version is empty."
           }
           "version=$current" >> $env:GITHUB_OUTPUT
-          if ($current -eq $previous) {
+          $tag = "v$current"
+          gh api "repos/${{ github.repository }}/git/ref/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0) {
             "release=false" >> $env:GITHUB_OUTPUT
-            Write-Host "Version unchanged ($current); no release required."
+            Write-Host "Tag $tag already exists; no release required."
           } else {
             "release=true" >> $env:GITHUB_OUTPUT
-            Write-Host "Version changed from '$previous' to '$current'; release required."
+            Write-Host "Tag $tag does not exist; release required."
           }
 
       - name: Check for duplicate tag or release
