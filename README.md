@@ -10,7 +10,9 @@ headless recorder worker (separate process, capture/encode threads, bounded
 queues, replay preparation) and the mpv-based replay controller (external mpv
 process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
 headless application controller orchestrates recording, replay preparation, mpv
-playback and recording resume.  The UI is not implemented yet.
+playback and recording resume.  Configuration persistence (versioned JSON
+schema v1, NDI/Camera input selection, recorder buffer setting, mpv executable
+setting, atomic save) is implemented.  The UI is not implemented yet.
 
 ## Requirements
 
@@ -61,6 +63,7 @@ src/
 └─ quickreplay/
    ├─ app/          # application state and view models
    ├─ application/  # headless application controller (recording/replay lifecycle)
+   ├─ configuration/# versioned JSON configuration persistence
    ├─ input/        # input config, stream info, frame models, InputSource
    │  ├─ ndi/       # NDI discovery, receiver and frame conversion
    │  └─ camera/    # camera discovery, OpenCV capture and frame conversion
