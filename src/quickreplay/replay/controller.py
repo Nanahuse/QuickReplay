@@ -129,6 +129,19 @@ class ReplayController:
     def is_open(self) -> bool:
         return self._asset is not None
 
+    def is_alive(self) -> bool:
+        """Whether the mpv process is still running (``False`` when closed)."""
+        if self._asset is None or self._process is None:
+            return False
+        return self._process.poll() is None
+
+    def check_alive(self) -> None:
+        """Raise :class:`MpvProcessExitedError` if mpv has exited."""
+        if self._asset is None or self._process is None:
+            return
+        if self._process.poll() is not None:
+            raise MpvProcessExitedError("the mpv process has exited")
+
     # -- playback control --------------------------------------------------
     def play(self) -> None:
         self._require_open().set_property("pause", False)
