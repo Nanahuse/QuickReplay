@@ -202,6 +202,7 @@ class UiSession:
 
         self._replay_position_ns: int | None = None
         self._replay_paused: bool | None = None
+        self._frame_navigation_active = False
         self._set_point: SetPoint | None = None
         self._time_difference_ns: int | None = None
         self._frame_difference: int | None = None
@@ -293,7 +294,7 @@ class UiSession:
         if self._snapshot.state == ApplicationState.REPLAY:
             if previous_state != ApplicationState.REPLAY:
                 self._reset_replay_state()
-            await self.refresh_replay_status()
+            await self.refresh_replay_status(refresh_pause=not self._frame_navigation_active)
         elif previous_state == ApplicationState.REPLAY:
             # Leaving replay clears the transient replay UI state.
             self._reset_replay_state()
@@ -394,11 +395,14 @@ class UiSession:
         """Toggle using the core pause state as the source of truth."""
 
         async def action() -> None:
-            if await self._bridge.is_paused():
+            if self._replay_paused is True:
                 await self._bridge.play()
+                self._replay_paused = False
             else:
                 await self._bridge.pause()
+                self._replay_paused = True
 
+        self._frame_navigation_active = False
         await self._run_replay_action(action)
 
     async def step_backward(self) -> None:
@@ -419,13 +423,14 @@ class UiSession:
 
         await self._run_replay_action(action)
 
-    async def refresh_replay_status(self) -> None:
+    async def refresh_replay_status(self, *, refresh_pause: bool = True) -> None:
         """Refresh position, pause state and differences while replaying."""
         if self._snapshot.state != ApplicationState.REPLAY:
             return
         try:
             self._replay_position_ns = await self._bridge.replay_position_ns()
-            self._replay_paused = await self._bridge.is_paused()
+            if refresh_pause and not self._frame_navigation_active:
+                self._replay_paused = await self._bridge.is_paused()
             if self._set_point is not None:
                 self._time_difference_ns = await self._bridge.time_difference_ns(self._set_point)
                 self._frame_difference = await self._bridge.frame_difference(self._set_point)
@@ -454,6 +459,7 @@ class UiSession:
         """Pause playback before applying a frame-relative replay action."""
 
         async def paused_action() -> None:
+            self._frame_navigation_active = True
             if self._replay_paused is not True:
                 await self._bridge.pause()
                 self._replay_paused = True
@@ -465,6 +471,7 @@ class UiSession:
     def _reset_replay_state(self) -> None:
         self._replay_position_ns = None
         self._replay_paused = None
+        self._frame_navigation_active = False
         self._set_point = None
         self._time_difference_ns = None
         self._frame_difference = None
