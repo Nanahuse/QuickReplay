@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Sync locked dependencies
+        run: uv sync --locked
+
+      - name: Detect version change
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $current = (uv version --short).Trim()
+          if ([string]::IsNullOrWhiteSpace($current)) {
+            throw "Current project version is empty."
+          }
+          "version=$current" >> $env:GITHUB_OUTPUT
+          $tag = "v$current"
+          gh api "repos/${{ github.repository }}/git/ref/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "release=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Tag $tag already exists; no release required."
+          } else {
+            "release=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Tag $tag does not exist; release required."
+          }
+
+      - name: Check for duplicate tag or release
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "v${{ steps.version.outputs.version }}"
+          gh api "repos/${{ github.repository }}/git/ref/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists." }
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+
+      - name: Build Windows app
+        if: steps.version.outputs.release == 'true'
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          uv run flet clean
+          uv run flet build windows --python-version 3.14 --yes
+
+      - name: Create portable distribution ZIP
+        if: steps.version.outputs.release == 'true'
+        run: uv run python tools/package_windows_release.py
+
+      - name: Verify release ZIP
+        if: steps.version.outputs.release == 'true'
+        shell: pwsh
+        run: |
+          $zip = "dist/QuickReplay-${{ steps.version.outputs.version }}-windows-x64.zip"
+          if (-not (Test-Path $zip)) { throw "Release ZIP was not generated: $zip" }
+
+      - name: Create tag
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$env:VERSION" "${{ github.sha }}" -m "QuickReplay v$env:VERSION"
+          git push origin "v$env:VERSION"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v${{ steps.version.outputs.version }}"
+          $zip = "dist/QuickReplay-${{ steps.version.outputs.version }}-windows-x64.zip"
+          gh release create $tag $zip --repo "${{ github.repository }}" --title "QuickReplay $tag" --generate-notes
