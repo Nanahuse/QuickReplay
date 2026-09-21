@@ -1,5 +1,6 @@
 """Headless tests for the portable Windows distribution staging helper."""
 
+import tomllib
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from zipfile import ZipFile
@@ -15,7 +16,12 @@ read_project_version = _MODULE.read_project_version
 
 
 def test_project_version_is_read_from_pyproject() -> None:
-    assert read_project_version() == "2.0.0"
+    assert (
+        read_project_version()
+        == tomllib.loads(
+            (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+        )["project"]["version"]
+    )
 
 
 def test_distribution_contains_versioned_zip_and_notices(tmp_path: Path) -> None:
@@ -26,7 +32,8 @@ def test_distribution_contains_versioned_zip_and_notices(tmp_path: Path) -> None
 
     archive = create_distribution(build_dir=build_dir, output_dir=tmp_path / "dist")
 
-    assert archive.name == "QuickReplay-2.0.0-windows-x64.zip"
+    version = read_project_version()
+    assert archive.name == f"QuickReplay-{version}-windows-x64.zip"
     with ZipFile(archive) as zip_file:
         assert set(zip_file.namelist()) == {
             "QuickReplay/QuickReplay.exe",
