@@ -92,10 +92,8 @@ uv run ty check
 
 ## Branch status
 
-Version 2 is developed on the `feature/version2` integration branch.  Feature
-work is done on short-lived branches (for example `feature/v2-domain`) and
-merged into `feature/version2` via pull request.  `main` is not merged into
-directly.
+Development is performed on short-lived branches and merged into `main` through
+pull requests.
 
 ## Project layout
 
@@ -120,5 +118,5 @@ uv.lock
 
 ## License
 
-See `LICENSE`.  Third-party license notes are in `LICENSE_ThirdParty.md` and
-will be updated once the Version 2 dependencies are finalised.
+See `LICENSE`.  Third-party license notices are listed in
+`LICENSE_ThirdParty.md`.
