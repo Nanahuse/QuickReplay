@@ -25,6 +25,7 @@ from quickreplay.input.models import (
     CameraMode,
     NdiInputDescriptor,
 )
+from quickreplay.replay.models import ReplayAsset
 from quickreplay.ui.main_view import MainView
 from quickreplay.ui.session import CAMERA_KIND, UiSession
 from quickreplay.ui.settings import CAMERA_MODE_MESSAGE
@@ -167,3 +168,27 @@ def test_settings_button_disabled_while_shutting_down(tmp_path: Path) -> None:
     view.render(session.view_state())
 
     assert view.settings_header_button.disabled is True
+
+
+def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
+    session, bridge = _session(tmp_path)
+    view, _page = _view(session)
+
+    bridge.snapshot_value = ApplicationSnapshot(
+        state=ApplicationState.REPLAY,
+        replay_asset=ReplayAsset(Path("replay.mkv"), 10_000_000_000, Fraction(60, 1)),
+    )
+    asyncio.run(session.poll())
+    view.render(session.view_state())
+
+    assert view.input_section.visible is False
+    assert view.recording_section.visible is False
+    assert view.replay_panel.visible is True
+    assert view.replay_back20_button.content == "-20f"
+    assert view.replay_back1_button.content == "-1f"
+    assert view.replay_play_button.content == "Play"
+    assert view.replay_forward1_button.content == "+1f"
+    assert view.replay_forward20_button.content == "+20f"
+    assert view.set_point_button.content == "Set Point"
+    assert view.resume_button.content == "Resume Recording"
+    assert view.control.scroll == ft.ScrollMode.AUTO

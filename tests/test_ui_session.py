@@ -475,3 +475,9 @@ def test_transient_replay_error_is_reported(tmp_path: Path) -> None:
     assert "Replay control failed" in (session.view_state().error_message or "")
     # The application state machine is unchanged.
     assert session.view_state().state == ApplicationState.REPLAY
+
+    bridge.position_error = None
+    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RESUMING)
+    asyncio.run(session.poll())
+
+    assert session.view_state().error_message is None
