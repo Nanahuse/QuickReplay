@@ -184,11 +184,11 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert view.input_section.visible is False
     assert view.recording_section.visible is False
     assert view.replay_panel.visible is True
-    assert view.replay_back20_button.content == "-20f"
-    assert view.replay_back1_button.content == "-1f"
+    assert cast(ft.Text, view.replay_back20_button.content).value == "-20f"
+    assert cast(ft.Text, view.replay_back1_button.content).value == "-1f"
     assert view.replay_play_button.content == "Play"
-    assert view.replay_forward1_button.content == "+1f"
-    assert view.replay_forward20_button.content == "+20f"
+    assert cast(ft.Text, view.replay_forward1_button.content).value == "+1f"
+    assert cast(ft.Text, view.replay_forward20_button.content).value == "+20f"
     assert view.set_point_button.content == "Set Point"
     assert view.resume_button.content == "Resume Recording"
     assert view.control.scroll == ft.ScrollMode.AUTO
