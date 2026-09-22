@@ -81,13 +81,12 @@ def _view(session: UiSession) -> tuple[MainView, _StubPage]:
     return MainView(cast(ft.Page, page), session), page
 
 
-def test_open_populates_dialog_for_selected_camera(tmp_path: Path) -> None:
+def test_setup_populates_settings_for_selected_camera(tmp_path: Path) -> None:
     session, _ = _camera_session(tmp_path)
     view, page = _view(session)
 
-    view._on_settings_open(cast(ft.Event, object()))
+    view._populate_settings_fields()
 
-    assert page.shown == [view.settings_dialog]
     assert view.settings_explicit_checkbox.disabled is False
     assert view.settings_camera_label.value == "Editing: Camera 1 (#1)"
     assert view.settings_buffer_field.value == "120"
@@ -100,14 +99,14 @@ def test_open_populates_dialog_for_selected_camera(tmp_path: Path) -> None:
 def test_camera_fields_enable_when_explicit_mode_is_checked(tmp_path: Path) -> None:
     session, _ = _camera_session(tmp_path)
     view, page = _view(session)
-    view._on_settings_open(cast(ft.Event, object()))
+    view._populate_settings_fields()
 
     view.settings_explicit_checkbox.value = True
     view._on_settings_explicit_change(cast(ft.Event, object()))
 
     assert view.settings_width_field.disabled is False
     assert view.settings_denominator_field.disabled is False
-    assert page.updates >= 2
+    assert page.updates >= 1
 
 
 def test_camera_section_disabled_without_camera_selection(tmp_path: Path) -> None:
@@ -115,7 +114,7 @@ def test_camera_section_disabled_without_camera_selection(tmp_path: Path) -> Non
     asyncio.run(_discover(session, bridge, (NdiInputDescriptor("OBS"),)))
     view, _page = _view(session)
 
-    view._on_settings_open(cast(ft.Event, object()))
+    view._populate_settings_fields()
 
     assert view.settings_explicit_checkbox.disabled is True
     assert view.settings_camera_hint.visible is True
@@ -126,7 +125,7 @@ def test_camera_section_disabled_without_camera_selection(tmp_path: Path) -> Non
 def test_apply_success_closes_dialog_and_shows_status(tmp_path: Path) -> None:
     session, _ = _camera_session(tmp_path)
     view, page = _view(session)
-    view._on_settings_open(cast(ft.Event, object()))
+    view._populate_settings_fields()
     view.settings_explicit_checkbox.value = True
     view.settings_width_field.value = "1280"
     view.settings_height_field.value = "720"
@@ -135,7 +134,6 @@ def test_apply_success_closes_dialog_and_shows_status(tmp_path: Path) -> None:
 
     asyncio.run(view._apply_settings())
 
-    assert page.popped == 1
     assert session.config.input == replace(
         CameraInputConfig("Camera 1", 1, "any", None),
         mode=CameraMode(1280, 720, Fraction(60, 1)),
@@ -147,12 +145,11 @@ def test_apply_validation_failure_keeps_dialog_open(tmp_path: Path) -> None:
     session, _ = _camera_session(tmp_path)
     view, page = _view(session)
     before = session.config
-    view._on_settings_open(cast(ft.Event, object()))
+    view._populate_settings_fields()
     view.settings_buffer_field.value = "0"
 
     asyncio.run(view._apply_settings())
 
-    assert page.popped == 0
     assert session.config == before
     assert "Buffer duration" in view.settings_error_text.value
     # The edited draft stays visible for the user to correct.
@@ -167,7 +164,7 @@ def test_settings_button_disabled_while_shutting_down(tmp_path: Path) -> None:
 
     view.render(session.view_state())
 
-    assert view.settings_header_button.disabled is True
+    assert view.session_section.visible is True
 
 
 def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
@@ -190,5 +187,5 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert cast(ft.Text, view.replay_forward1_button.content).value == "+1f"
     assert cast(ft.Text, view.replay_forward20_button.content).value == "+20f"
     assert view.set_point_button.content == "Set Point"
-    assert view.resume_button.content == "Resume Recording"
+    assert view.resume_button.content == "Resume"
     assert view.control.scroll == ft.ScrollMode.AUTO

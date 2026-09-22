@@ -357,8 +357,6 @@ def test_actions_after_close_do_not_call_core(tmp_path: Path) -> None:
         view._on_resume(_event())
         view._run_replay_action("step_forward")
         view._on_settings_apply(_event())
-        view._on_settings_open(_event())
-        view._on_settings_cancel(_event())
         view._on_source_select(_event())
         view._on_seek_start(_event())
         view._on_seek_change(_event())
@@ -372,7 +370,6 @@ def test_actions_after_close_do_not_call_core(tmp_path: Path) -> None:
         assert bridge.step_forward_calls == 0
         assert bridge.seek_absolute_calls == []
         assert page.updates == updates_after_close
-        assert page.dialogs == []
 
     asyncio.run(scenario())
 
@@ -419,8 +416,6 @@ def test_settings_apply_race_does_not_touch_the_page(tmp_path: Path) -> None:
     async def scenario() -> None:
         store = BlockingStore(tmp_path / "config.json")
         view, _session, _bridge, page = _make(tmp_path, store=store)
-        view._on_settings_open(_event())
-
         task = asyncio.ensure_future(view._apply_settings())
         await asyncio.to_thread(store.entered.wait)
         updates_before = page.updates
@@ -430,8 +425,6 @@ def test_settings_apply_race_does_not_touch_the_page(tmp_path: Path) -> None:
         await task
 
         assert page.updates == updates_before
-        # The dialog was never closed and the draft was never applied.
-        assert page.dialogs == [view.settings_dialog]
         assert view.settings_error_text.value == ""
 
     asyncio.run(scenario())

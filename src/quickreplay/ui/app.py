@@ -43,8 +43,8 @@ def _show_startup_error(page: ft.Page, message: str) -> None:
 async def main(page: ft.Page) -> None:
     """Flet entry point."""
     page.title = "QuickReplay"
-    page.window.width = 900
-    page.window.height = 720
+    page.window.width = 780
+    page.window.height = 700
 
     try:
         paths = storage_paths_from_environment()

@@ -7,6 +7,7 @@ session; the view holds only transient widget state.
 """
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -34,6 +35,9 @@ _DESTROYED_SESSION_MARKER = "destroyed session"
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
+SETUP_WINDOW_SIZE = (780, 700)
+RECORDING_WINDOW_SIZE = (680, 220)
+REPLAY_WINDOW_SIZE = (720, 430)
 
 
 class ViewLifecycle(Enum):
@@ -103,6 +107,7 @@ class MainView:
         self._start_done = asyncio.Event()
         self._replay_repeater = ReplayActionRepeater()
         self._replay_repeat_active = False
+        self._window_mode: str | None = None
 
         self.state_text = ft.Text("", weight=ft.FontWeight.BOLD)
         self.kind_button = ft.SegmentedButton(
@@ -122,16 +127,8 @@ class MainView:
         self.refresh_button = ft.FilledButton(content="Refresh", on_click=self._on_refresh)
         self.start_button = ft.FilledButton(content="Start Recording", on_click=self._on_start)
         self.replay_button = ft.FilledButton(content="Replay", on_click=self._on_replay)
-        self.resume_button = ft.FilledButton(content="Resume Recording", on_click=self._on_resume)
+        self.resume_button = ft.FilledButton(content="Resume", on_click=self._on_resume)
 
-        self.stream_text = ft.Text(_EMPTY)
-        self.audio_text = ft.Text(_EMPTY)
-        self.input_fps_text = ft.Text(_EMPTY)
-        self.recording_fps_text = ft.Text(_EMPTY)
-        self.buffer_text = ft.Text(_EMPTY)
-        self.buffer_bar = ft.ProgressBar(value=0)
-        self.segments_text = ft.Text(_EMPTY)
-        self.drops_text = ft.Text(_EMPTY)
         self.replay_fps_text = ft.Text(_EMPTY)
 
         # Replay panel (only visible while replaying).
@@ -168,8 +165,7 @@ class MainView:
         self.set_point_button = ft.FilledButton(content="Set Point", on_click=self._on_set_point)
         self.replay_panel = ft.Column(
             controls=[
-                ft.Text("Replay", weight=ft.FontWeight.BOLD),
-                ft.Row(controls=[self.replay_position_text, ft.Text("|"), self.replay_fps_text]),
+                ft.Row(controls=[self.replay_position_text, ft.Text("·"), self.replay_fps_text]),
                 self.replay_slider,
                 ft.Row(
                     controls=[
@@ -180,9 +176,9 @@ class MainView:
                         self.replay_forward20_gesture,
                     ]
                 ),
-                ft.Row(controls=[ft.Text("Set Point:"), self.set_point_text]),
-                ft.Row(controls=[ft.Text("Difference:"), self.time_difference_text]),
-                ft.Row(controls=[ft.Text("Frames:"), self.frame_difference_text]),
+                ft.Row(
+                    controls=[self.time_difference_text, ft.Text("·"), self.frame_difference_text]
+                ),
                 self.set_point_button,
             ],
             spacing=10,
@@ -195,7 +191,6 @@ class MainView:
                 self.kind_button,
                 ft.Row(controls=[self.source_dropdown, self.refresh_button]),
                 self.backend_dropdown,
-                self.start_button,
             ],
             spacing=10,
         )
@@ -208,11 +203,8 @@ class MainView:
         self.recording_status_text = ft.Text("", color=ft.Colors.BLUE_GREY)
         self.recording_section.controls = [self.recording_status_text]
 
-        # Settings dialog (Flet-independent draft + validation live in the session).
+        # Setup settings fields (validation and persistence remain in UiSession).
         self._settings_camera_available = False
-        self.settings_header_button = ft.FilledButton(
-            content="Settings", on_click=self._on_settings_open
-        )
         self.settings_camera_label = ft.Text("", italic=True, color=ft.Colors.BLUE_GREY)
         self.settings_camera_hint = ft.Text("Select a camera input to edit its capture mode.")
         self.settings_explicit_checkbox = ft.Checkbox(
@@ -227,46 +219,8 @@ class MainView:
         self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
         self.settings_mpv_field = ft.TextField(label="mpv executable", width=380)
         self.settings_error_text = ft.Text("", color=ft.Colors.RED)
-        self.settings_cancel_button = ft.TextButton(
-            content="Cancel", on_click=self._on_settings_cancel
-        )
         self.settings_apply_button = ft.FilledButton(
             content="Apply", on_click=self._on_settings_apply
-        )
-        self.settings_dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Settings"),
-            content=ft.Column(
-                controls=[
-                    ft.Text("Camera", weight=ft.FontWeight.BOLD),
-                    self.settings_camera_label,
-                    self.settings_explicit_checkbox,
-                    self.settings_camera_hint,
-                    ft.Row(controls=[self.settings_width_field, self.settings_height_field]),
-                    ft.Row(
-                        controls=[
-                            self.settings_numerator_field,
-                            ft.Text("/"),
-                            self.settings_denominator_field,
-                        ]
-                    ),
-                    ft.Divider(),
-                    ft.Text("Recording", weight=ft.FontWeight.BOLD),
-                    ft.Row(controls=[self.settings_buffer_field, ft.Text("seconds")]),
-                    ft.Text("Restart required after changing", italic=True),
-                    ft.Divider(),
-                    ft.Text("Replay", weight=ft.FontWeight.BOLD),
-                    self.settings_mpv_field,
-                    ft.Text("Restart required after changing", italic=True),
-                    self.settings_error_text,
-                ],
-                spacing=8,
-                tight=True,
-                width=460,
-                scroll=ft.ScrollMode.AUTO,
-            ),
-            actions=[self.settings_cancel_button, self.settings_apply_button],
-            actions_alignment=ft.MainAxisAlignment.END,
         )
 
         self.setup_button = ft.FilledButton(content="← Setup", on_click=self._on_setup)
@@ -293,7 +247,10 @@ class MainView:
                 self.settings_mpv_field,
                 ft.Text("Restart required after changing", italic=True),
                 self.settings_error_text,
-                self.settings_apply_button,
+                ft.Row(
+                    controls=[self.settings_apply_button, self.start_button],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
             ],
             spacing=8,
         )
@@ -322,8 +279,6 @@ class MainView:
 
         self.control = ft.Column(
             controls=[
-                ft.Text("QuickReplay", size=24, weight=ft.FontWeight.BOLD),
-                ft.Divider(),
                 self.setup_section,
                 self.session_section,
                 ft.Divider(),
@@ -333,7 +288,7 @@ class MainView:
             spacing=10,
             scroll=ft.ScrollMode.AUTO,
         )
-        self._populate_settings_dialog()
+        self._populate_settings_fields()
 
     # -- lifecycle ---------------------------------------------------------
     @property
@@ -366,7 +321,7 @@ class MainView:
         else:
             self._starting = False
             self._start_done.set()
-        self._populate_settings_dialog()
+        self._populate_settings_fields()
         await self._render_and_update()
 
     def start_polling(self) -> None:
@@ -521,28 +476,6 @@ class MainView:
         if not self._update_page() and self._session_lost:
             self._launch_close(destroy_window=False)
 
-    def _show_dialog(self, dialog: ft.AlertDialog) -> None:
-        if not self.is_active:
-            return
-        try:
-            self.page.show_dialog(dialog)
-        except RuntimeError as exc:
-            if not is_destroyed_session_error(exc):
-                raise
-            self._session_lost = True
-            self._launch_close(destroy_window=False)
-
-    def _pop_dialog(self) -> None:
-        if not self.is_active:
-            return
-        try:
-            self.page.pop_dialog()
-        except RuntimeError as exc:
-            if not is_destroyed_session_error(exc):
-                raise
-            self._session_lost = True
-            self._launch_close(destroy_window=False)
-
     def _run_task(self, handler: Callable[..., Awaitable[None]], *args: object) -> None:
         """Launch an async UI action unless the view is closing/closed."""
         if not self.is_active:
@@ -574,6 +507,7 @@ class MainView:
 
     # -- rendering ---------------------------------------------------------
     def render(self, state: UiViewState) -> None:
+        self._update_window_size(state.state)
         if not state.replay_active:
             self._replay_repeater.release()
             self._replay_repeat_active = False
@@ -583,6 +517,14 @@ class MainView:
             else "● REPLAY"
             if state.state is ApplicationState.REPLAY
             else state.state_label
+        )
+        self.state_text.animate_opacity = 500 if state.state is ApplicationState.RECORDING else None
+        self.state_text.opacity = (
+            1.0
+            if int(time.monotonic() * 2) % 2 == 0
+            else 0.55
+            if state.state is ApplicationState.RECORDING
+            else 1.0
         )
 
         self.kind_button.selected = [state.input_kind]
@@ -603,7 +545,6 @@ class MainView:
 
         self.refresh_button.content = "Discovering..." if state.discovering else "Refresh"
         self.refresh_button.disabled = not state.controls.refresh_enabled
-        self.settings_header_button.disabled = not state.controls.settings_enabled
         self.start_button.disabled = not state.controls.start_enabled
         self.replay_button.disabled = not state.controls.replay_enabled
         self.replay_button.visible = not state.replay_active
@@ -632,17 +573,13 @@ class MainView:
         self.resume_button.visible = state.state is ApplicationState.REPLAY
         self.replay_button.visible = state.state is ApplicationState.RECORDING
 
-        self.stream_text.value = state.stream_text
-        self.audio_text.value = state.audio_text
         metrics = state.metrics
-        self.input_fps_text.value = metrics.input_fps if metrics else _EMPTY
-        self.recording_fps_text.value = metrics.recording_fps if metrics else _EMPTY
-        self.buffer_text.value = metrics.buffer if metrics else _EMPTY
-        self.buffer_bar.value = metrics.buffer_fraction if metrics else 0
-        self.segments_text.value = metrics.segments if metrics else _EMPTY
-        self.drops_text.value = metrics.drops if metrics else _EMPTY
         if metrics:
-            drops = f" · {metrics.drops} drops" if metrics.drops != "0" else ""
+            drops = (
+                f" · ⚠ Drops V:{metrics.video_drops} A:{metrics.audio_drops}"
+                if metrics.has_drops
+                else ""
+            )
             self.recording_status_text.value = (
                 f"Input {metrics.input_fps} fps · Rec {metrics.recording_fps} fps · "
                 f"Seg {metrics.segments} · Buf {metrics.buffer}{drops}"
@@ -654,6 +591,20 @@ class MainView:
         self.status_text.visible = bool(state.status_message)
         self.error_text.value = state.error_message or ""
         self.error_text.visible = bool(state.error_message)
+
+    def _update_window_size(self, state: ApplicationState) -> None:
+        if state in (ApplicationState.IDLE, ApplicationState.STARTING):
+            mode, size = "setup", SETUP_WINDOW_SIZE
+        elif state is ApplicationState.REPLAY:
+            mode, size = "replay", REPLAY_WINDOW_SIZE
+        else:
+            mode, size = "session", RECORDING_WINDOW_SIZE
+        if mode == self._window_mode:
+            return
+        self._window_mode = mode
+        if not hasattr(self.page, "window"):
+            return
+        self.page.window.width, self.page.window.height = size
 
     def _render_replay(self, replay: ReplayView | None) -> None:
         self.replay_panel.visible = replay is not None
@@ -824,13 +775,6 @@ class MainView:
         await self._run_action(lambda: self.session.seek_absolute_ns(target_ns))
 
     # -- settings handlers -------------------------------------------------
-    def _on_settings_open(self, event: ft.Event) -> None:
-        if not self.is_active:
-            return
-        self._populate_settings_dialog()
-        self._update_page()
-        self._show_dialog(self.settings_dialog)
-
     def _on_setup(self, event: ft.Event) -> None:
         self._stop_replay_repeat()
         self._run_task(self._stop_session)
@@ -839,7 +783,7 @@ class MainView:
         await self.session.stop_session()
         await self._render_and_update()
 
-    def _populate_settings_dialog(self) -> None:
+    def _populate_settings_fields(self) -> None:
         draft = self.session.settings_draft()
         self._settings_camera_available = draft.camera_available
         self.settings_explicit_checkbox.value = draft.use_explicit_camera_mode
@@ -886,11 +830,6 @@ class MainView:
             camera_available=self._settings_camera_available,
         )
 
-    def _on_settings_cancel(self, event: ft.Event) -> None:
-        # Cancel discards the draft: nothing is saved and the session config is
-        # untouched.  The next open repopulates from the persisted config.
-        self._pop_dialog()
-
     def _on_settings_apply(self, event: ft.Event) -> None:
         self._run_task(self._apply_settings)
 
@@ -899,20 +838,17 @@ class MainView:
             return
         draft = self._settings_draft()
         self.settings_apply_button.disabled = True
-        self.settings_cancel_button.disabled = True
         self._update_page()
         try:
             result = await self.session.apply_settings(draft)
         finally:
             if self.is_active:
                 self.settings_apply_button.disabled = False
-                self.settings_cancel_button.disabled = False
         if not self.is_active:
             # A close began while the configuration was saving: the dialog is
             # gone with the session and the draft is discarded, never applied.
             return
         if result.ok:
-            self._pop_dialog()
             self.render(self.session.view_state())
         else:
             messages = [error.message for error in result.errors]
