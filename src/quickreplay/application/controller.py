@@ -254,6 +254,7 @@ class ApplicationController:
             raise InvalidApplicationStateError("a stop session request is already pending")
         request_id = self._request_id_factory()
         self._pending_stop_request_id = request_id
+        self._set_state(ApplicationState.STOPPING)
         self._close_replay()
         self._send(StopSession(request_id))
         return request_id

@@ -21,6 +21,7 @@ _STATE_LABELS: dict[ApplicationState, str] = {
     ApplicationState.RECORDING: "Recording",
     ApplicationState.PREPARING_REPLAY: "Preparing Replay",
     ApplicationState.REPLAY: "Replay",
+    ApplicationState.STOPPING: "Stopping",
     ApplicationState.RESUMING: "Resuming",
     ApplicationState.ERROR: "Error",
     ApplicationState.SHUTTING_DOWN: "Shutting Down",

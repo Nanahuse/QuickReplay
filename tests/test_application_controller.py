@@ -244,8 +244,10 @@ def test_stop_session_from_recording_waits_for_worker_completion() -> None:
     app = _to_recording(worker)
 
     request_id = app.stop_session()
-    assert app.state == ApplicationState.RECORDING
+    assert app.state == ApplicationState.STOPPING
     assert worker.commands_of(StopSession)[0].request_id == request_id
+    with pytest.raises(InvalidApplicationStateError):
+        app.request_replay()
 
     worker.push(SessionStopped(request_id=request_id))
     events = app.poll()
@@ -267,7 +269,9 @@ def test_stop_session_from_replay_closes_without_resuming() -> None:
     assert replay.calls[-1] == "close"
     assert not worker.commands_of(ResumeRecording)
     assert worker.commands_of(StopSession)[0].request_id == request_id
-    assert app.state == ApplicationState.REPLAY
+    assert app.state == ApplicationState.STOPPING
+    with pytest.raises(InvalidApplicationStateError):
+        app.replay_position_ns()
 
     worker.push(SessionStopped(request_id=request_id))
     app.poll()
