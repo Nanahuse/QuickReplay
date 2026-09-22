@@ -74,6 +74,8 @@ class BridgeLike(Protocol):
 
     async def resume_recording(self) -> UUID: ...
 
+    async def stop_session(self) -> UUID: ...
+
     async def poll(self, timeout: float = 0.0) -> tuple[ApplicationEvent, ...]: ...
 
     async def snapshot(self) -> ApplicationSnapshot: ...
@@ -333,6 +335,9 @@ class UiSession:
 
     async def resume_recording(self) -> None:
         await self._bridge.resume_recording()
+
+    async def stop_session(self) -> None:
+        await self._bridge.stop_session()
 
     async def shutdown(self) -> None:
         """Shut the application down exactly once.

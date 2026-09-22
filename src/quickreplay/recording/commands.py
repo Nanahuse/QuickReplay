@@ -57,6 +57,19 @@ class Shutdown:
     """Terminate the worker process."""
 
 
+@dataclass(frozen=True, slots=True)
+class StopSession:
+    """Discard the active recording/replay session but keep the worker alive."""
+
+    request_id: UUID
+
+
 type WorkerCommand = (
-    StartRecording | PrepareReplay | ResumeRecording | ChangeInput | DiscoverInputs | Shutdown
+    StartRecording
+    | PrepareReplay
+    | ResumeRecording
+    | ChangeInput
+    | DiscoverInputs
+    | StopSession
+    | Shutdown
 )

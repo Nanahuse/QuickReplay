@@ -61,6 +61,13 @@ class ReplayPrepared:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionStopped:
+    """The worker finished discarding the active session."""
+
+    request_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class WorkerError:
     """A worker error, identified by a machine-readable code."""
 
@@ -75,5 +82,6 @@ type WorkerEvent = (
     | StreamStarted
     | RecordingMetricsUpdated
     | ReplayPrepared
+    | SessionStopped
     | WorkerError
 )

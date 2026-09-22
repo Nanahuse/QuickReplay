@@ -38,11 +38,13 @@ from quickreplay.recording.commands import (
     ResumeRecording,
     Shutdown,
     StartRecording,
+    StopSession,
 )
 from quickreplay.recording.events import (
     InputsDiscovered,
     RecordingMetricsUpdated,
     ReplayPrepared,
+    SessionStopped,
     StreamStarted,
     WorkerError,
     WorkerStateChanged,
@@ -235,6 +237,52 @@ def test_replay_open_failure_enters_error() -> None:
     assert app.state == ApplicationState.ERROR
     assert replay_factory.controllers[0].calls == ["open", "close"]
     assert any(isinstance(event, ApplicationError) for event in events)
+
+
+def test_stop_session_from_recording_waits_for_worker_completion() -> None:
+    worker = FakeWorker()
+    app = _to_recording(worker)
+
+    request_id = app.stop_session()
+    assert app.state == ApplicationState.RECORDING
+    assert worker.commands_of(StopSession)[0].request_id == request_id
+
+    worker.push(SessionStopped(request_id=request_id))
+    events = app.poll()
+
+    assert app.state == ApplicationState.IDLE
+    assert app.stream_info is None
+    assert app.snapshot().metrics is None
+    assert any(isinstance(event, ApplicationStateChanged) for event in events)
+
+
+def test_stop_session_from_replay_closes_without_resuming() -> None:
+    worker = FakeWorker()
+    replay_factory = FakeReplayFactory()
+    replay_id = uuid4()
+    app = _to_replay(worker, replay_factory, replay_id)
+    replay = replay_factory.controllers[0]
+
+    request_id = app.stop_session()
+    assert replay.calls[-1] == "close"
+    assert not worker.commands_of(ResumeRecording)
+    assert worker.commands_of(StopSession)[0].request_id == request_id
+    assert app.state == ApplicationState.REPLAY
+
+    worker.push(SessionStopped(request_id=request_id))
+    app.poll()
+
+    assert app.state == ApplicationState.IDLE
+    assert app.replay_asset is None
+
+
+def test_stop_session_is_rejected_during_replay_preparation() -> None:
+    worker = FakeWorker()
+    app = _to_recording(worker)
+    app.request_replay()
+
+    with pytest.raises(InvalidApplicationStateError):
+        app.stop_session()
 
 
 def test_resume_lifecycle() -> None:

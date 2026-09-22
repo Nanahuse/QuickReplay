@@ -33,6 +33,8 @@ class ControllerLike(Protocol):
 
     def resume_recording(self) -> UUID: ...
 
+    def stop_session(self) -> UUID: ...
+
     def poll(self, timeout: float = 0.0) -> tuple[ApplicationEvent, ...]: ...
 
     def snapshot(self) -> ApplicationSnapshot: ...
@@ -97,6 +99,9 @@ class ApplicationUiBridge:
 
     async def resume_recording(self) -> UUID:
         return await self._run(self._controller.resume_recording)
+
+    async def stop_session(self) -> UUID:
+        return await self._run(self._controller.stop_session)
 
     async def poll(self, timeout: float = 0.0) -> tuple[ApplicationEvent, ...]:
         return await self._run(self._controller.poll, timeout)
