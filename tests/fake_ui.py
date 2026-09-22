@@ -53,6 +53,10 @@ class FakeController:
         self._record("resume_recording")
         return uuid4()
 
+    def stop_session(self) -> UUID:
+        self._record("stop_session")
+        return uuid4()
+
     def poll(self, timeout: float = 0.0) -> tuple[ApplicationEvent, ...]:
         self._record("poll")
         return ()
@@ -113,6 +117,7 @@ class FakeBridge:
         self.discovery_requests: list[str] = []
         self.replay_requests = 0
         self.resume_requests = 0
+        self.stop_requests = 0
         self.events: list[ApplicationEvent] = []
         self.snapshot_value = ApplicationSnapshot(state=ApplicationState.IDLE)
         self.next_discovery_id = uuid4()
@@ -155,6 +160,10 @@ class FakeBridge:
 
     async def resume_recording(self) -> UUID:
         self.resume_requests += 1
+        return uuid4()
+
+    async def stop_session(self) -> UUID:
+        self.stop_requests += 1
         return uuid4()
 
     async def poll(self, timeout: float = 0.0) -> tuple[ApplicationEvent, ...]:

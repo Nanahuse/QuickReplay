@@ -26,11 +26,13 @@ from quickreplay.recording.commands import (
     ResumeRecording,
     Shutdown,
     StartRecording,
+    StopSession,
 )
 from quickreplay.recording.events import (
     InputsDiscovered,
     RecordingMetricsUpdated,
     ReplayPrepared,
+    SessionStopped,
     StreamStarted,
     WorkerError,
 )
@@ -164,6 +166,52 @@ def test_resume_starts_a_new_session(tmp_path: Path) -> None:
         assert started.request_id == request_id
         directories = [path for path in settings.buffer_root.iterdir() if path.is_dir()]
         assert len(directories) == 1
+    finally:
+        harness.shutdown()
+
+
+def test_stop_session_cleans_recording_and_allows_restart(tmp_path: Path) -> None:
+    factory = ScriptedInputFactory(duration_ns=1_000_000_000)
+    settings = _settings(tmp_path)
+    harness = WorkerHarness(settings, input_factory=factory)
+    try:
+        _start(harness)
+        _wait_captured(harness, factory)
+        request_id = uuid4()
+        harness.send(StopSession(request_id))
+        harness.wait_state(WorkerState.IDLE)
+        stopped = harness.wait_event(SessionStopped)
+        assert stopped.request_id == request_id
+        assert list(settings.buffer_root.iterdir()) == []
+        assert harness.runtime._config is None
+
+        harness.send(StartRecording(NdiInputConfig("fake")))
+        harness.wait_state(WorkerState.RECORDING)
+        assert factory.calls == 2
+    finally:
+        harness.shutdown()
+
+
+def test_stop_session_cleans_frozen_replay(tmp_path: Path) -> None:
+    factory = ScriptedInputFactory(duration_ns=1_000_000_000)
+    settings = _settings(tmp_path)
+    harness = WorkerHarness(settings, input_factory=factory)
+    try:
+        _start(harness)
+        _wait_captured(harness, factory)
+        harness.send(PrepareReplay(uuid4()))
+        prepared = harness.wait_event(ReplayPrepared)
+        assert prepared.asset.path.exists()
+
+        request_id = uuid4()
+        harness.send(StopSession(request_id))
+        harness.wait_state(WorkerState.IDLE)
+        stopped = harness.wait_event(SessionStopped)
+        assert stopped.request_id == request_id
+        assert not prepared.asset.path.exists()
+
+        harness.send(StartRecording(NdiInputConfig("fake")))
+        harness.wait_state(WorkerState.RECORDING)
     finally:
         harness.shutdown()
 

@@ -40,12 +40,14 @@ from quickreplay.recording.commands import (
     ResumeRecording,
     Shutdown,
     StartRecording,
+    StopSession,
     WorkerCommand,
 )
 from quickreplay.recording.events import (
     InputsDiscovered,
     RecordingMetricsUpdated,
     ReplayPrepared,
+    SessionStopped,
     StreamStarted,
     WorkerError,
     WorkerEvent,
@@ -169,6 +171,7 @@ class ApplicationController:
         self._pending_stream_request_id: UUID | None = None
         self._pending_replay_request_id: UUID | None = None
         self._pending_resume_request_id: UUID | None = None
+        self._pending_stop_request_id: UUID | None = None
         self._pending_discovery_ids: set[UUID] = set()
 
         self._events: list[ApplicationEvent] = []
@@ -241,6 +244,20 @@ class ApplicationController:
             raise InvalidApplicationStateError("a resume request is already pending")
         self._close_replay()
         return self._begin_resume()
+
+    def stop_session(self) -> UUID:
+        """Discard the current session and return to idle without stopping the worker."""
+        self._require_state_any(
+            (ApplicationState.RECORDING, ApplicationState.REPLAY), "stop_session"
+        )
+        if self._pending_stop_request_id is not None:
+            raise InvalidApplicationStateError("a stop session request is already pending")
+        request_id = self._request_id_factory()
+        self._pending_stop_request_id = request_id
+        self._set_state(ApplicationState.STOPPING)
+        self._close_replay()
+        self._send(StopSession(request_id))
+        return request_id
 
     def change_input(self, input_config: InputConfig) -> UUID:
         """Switch the active input while recording."""
@@ -358,6 +375,8 @@ class ApplicationController:
                 self._handle_stream_started(event)
             case ReplayPrepared():
                 self._handle_replay_prepared(event)
+            case SessionStopped():
+                self._handle_session_stopped(event)
             case RecordingMetricsUpdated():
                 self._handle_metrics(event.metrics)
             case InputsDiscovered():
@@ -420,6 +439,20 @@ class ApplicationController:
         self._metrics = None
         self._set_state(ApplicationState.REPLAY)
         self._emit(ReplayStarted(asset=event.asset))
+
+    def _handle_session_stopped(self, event: SessionStopped) -> None:
+        if event.request_id != self._pending_stop_request_id:
+            return
+        self._pending_stop_request_id = None
+        self._stream_info = None
+        self._metrics = None
+        self._replay_asset = None
+        self._pending_kind = None
+        self._pending_stream_request_id = None
+        self._pending_replay_request_id = None
+        self._pending_resume_request_id = None
+        self._error_message = None
+        self._set_state(ApplicationState.IDLE)
 
     def _handle_metrics(self, metrics: RecordingMetrics) -> None:
         if self._state != ApplicationState.RECORDING:
@@ -522,6 +555,10 @@ class ApplicationController:
 
     def _require_state(self, expected: ApplicationState, operation: str) -> None:
         if self._state != expected:
+            raise InvalidApplicationStateError(f"{operation} is not allowed in state {self._state}")
+
+    def _require_state_any(self, expected: tuple[ApplicationState, ...], operation: str) -> None:
+        if self._state not in expected:
             raise InvalidApplicationStateError(f"{operation} is not allowed in state {self._state}")
 
     def _require_replay(self) -> ReplayControllerLike:

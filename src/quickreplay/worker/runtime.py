@@ -20,12 +20,14 @@ from quickreplay.recording.commands import (
     ResumeRecording,
     Shutdown,
     StartRecording,
+    StopSession,
     WorkerCommand,
 )
 from quickreplay.recording.events import (
     InputsDiscovered,
     RecordingMetricsUpdated,
     ReplayPrepared,
+    SessionStopped,
     StreamStarted,
     WorkerError,
     WorkerEvent,
@@ -110,6 +112,8 @@ class RecorderWorkerRuntime:
                 self._on_discover(command)
             case Shutdown():
                 self._on_shutdown()
+            case StopSession():
+                self._on_stop_session(command)
             case _:  # pragma: no cover - future commands
                 self._emit(
                     WorkerError(
@@ -215,6 +219,27 @@ class RecorderWorkerRuntime:
         self._set_state(WorkerState.SHUTTING_DOWN)
         self._cleanup_all()
         self._running = False
+
+    def _on_stop_session(self, command: StopSession) -> None:
+        if self._state not in (WorkerState.RECORDING, WorkerState.FROZEN):
+            self._reject(command.request_id, "StopSession requires recording or frozen state")
+            return
+        self._set_state(WorkerState.STOPPING)
+        try:
+            if self._state == WorkerState.STOPPING and self._pipeline is not None:
+                self._pipeline.stop()
+                ring = self._pipeline.take_ring()
+                if ring is not None:
+                    ring.clear()
+                self._remove_session_directory(self._pipeline.session)
+                self._pipeline = None
+            self._purge_replay_root()
+            self._config = None
+        except BaseException as exc:  # noqa: BLE001 - reported to the controller
+            self._fail(exc, command.request_id)
+            return
+        self._set_state(WorkerState.IDLE)
+        self._emit(SessionStopped(request_id=command.request_id))
 
     # -- session lifecycle -------------------------------------------------
     def _begin_session(self, config: InputConfig, request_id: UUID | None) -> None:

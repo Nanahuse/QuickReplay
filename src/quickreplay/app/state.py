@@ -15,6 +15,7 @@ class ApplicationState(StrEnum):
     RECORDING = "recording"
     PREPARING_REPLAY = "preparing_replay"
     REPLAY = "replay"
+    STOPPING = "stopping"
     RESUMING = "resuming"
     ERROR = "error"
     SHUTTING_DOWN = "shutting_down"
@@ -34,6 +35,7 @@ _ALLOWED_TRANSITIONS: dict[ApplicationState, frozenset[ApplicationState]] = {
     ApplicationState.RECORDING: frozenset(
         {
             ApplicationState.PREPARING_REPLAY,
+            ApplicationState.STOPPING,
             ApplicationState.IDLE,
             ApplicationState.ERROR,
             ApplicationState.SHUTTING_DOWN,
@@ -50,11 +52,13 @@ _ALLOWED_TRANSITIONS: dict[ApplicationState, frozenset[ApplicationState]] = {
     ApplicationState.REPLAY: frozenset(
         {
             ApplicationState.RESUMING,
+            ApplicationState.STOPPING,
             ApplicationState.IDLE,
             ApplicationState.ERROR,
             ApplicationState.SHUTTING_DOWN,
         }
     ),
+    ApplicationState.STOPPING: frozenset({ApplicationState.IDLE, ApplicationState.ERROR}),
     ApplicationState.RESUMING: frozenset(
         {
             ApplicationState.RECORDING,
