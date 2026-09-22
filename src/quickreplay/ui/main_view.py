@@ -183,10 +183,7 @@ class MainView:
                 ft.Row(controls=[ft.Text("Set Point:"), self.set_point_text]),
                 ft.Row(controls=[ft.Text("Difference:"), self.time_difference_text]),
                 ft.Row(controls=[ft.Text("Frames:"), self.frame_difference_text]),
-                ft.Row(
-                    controls=[self.set_point_button, self.resume_button],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
+                self.set_point_button,
             ],
             spacing=10,
             visible=False,
@@ -204,19 +201,12 @@ class MainView:
         )
         self.recording_section = ft.Column(
             controls=[
-                ft.Text("Recording", weight=ft.FontWeight.BOLD),
-                self.stream_text,
-                self.audio_text,
-                ft.Row(controls=[ft.Text("Input FPS"), self.input_fps_text]),
-                ft.Row(controls=[ft.Text("Recording FPS"), self.recording_fps_text]),
-                ft.Row(controls=[ft.Text("Buffer"), self.buffer_text]),
-                self.buffer_bar,
-                ft.Row(controls=[ft.Text("Segments"), self.segments_text]),
-                ft.Row(controls=[ft.Text("Drops"), self.drops_text]),
-                self.replay_button,
+                ft.Text("", visible=False),
             ],
             spacing=10,
         )
+        self.recording_status_text = ft.Text("", color=ft.Colors.BLUE_GREY)
+        self.recording_section.controls = [self.recording_status_text]
 
         # Settings dialog (Flet-independent draft + validation live in the session).
         self._settings_camera_available = False
@@ -313,7 +303,12 @@ class MainView:
         self.session_section = ft.Column(
             controls=[
                 ft.Row(
-                    controls=[self.state_text, self.setup_button],
+                    controls=[
+                        ft.Row(
+                            controls=[self.setup_button, self.replay_button, self.resume_button]
+                        ),
+                        self.state_text,
+                    ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 self.recording_section,
@@ -582,7 +577,13 @@ class MainView:
         if not state.replay_active:
             self._replay_repeater.release()
             self._replay_repeat_active = False
-        self.state_text.value = state.state_label
+        self.state_text.value = (
+            "● REC"
+            if state.state is ApplicationState.RECORDING
+            else "● REPLAY"
+            if state.state is ApplicationState.REPLAY
+            else state.state_label
+        )
 
         self.kind_button.selected = [state.input_kind]
         self.kind_button.disabled = not state.controls.input_enabled
@@ -627,6 +628,9 @@ class MainView:
             self.replay_forward20_gesture,
         ):
             gesture.disabled = session_disabled
+        self.resume_button.disabled = session_disabled
+        self.resume_button.visible = state.state is ApplicationState.REPLAY
+        self.replay_button.visible = state.state is ApplicationState.RECORDING
 
         self.stream_text.value = state.stream_text
         self.audio_text.value = state.audio_text
@@ -637,6 +641,14 @@ class MainView:
         self.buffer_bar.value = metrics.buffer_fraction if metrics else 0
         self.segments_text.value = metrics.segments if metrics else _EMPTY
         self.drops_text.value = metrics.drops if metrics else _EMPTY
+        if metrics:
+            drops = f" · {metrics.drops} drops" if metrics.drops != "0" else ""
+            self.recording_status_text.value = (
+                f"Input {metrics.input_fps} fps · Rec {metrics.recording_fps} fps · "
+                f"Seg {metrics.segments} · Buf {metrics.buffer}{drops}"
+            )
+        else:
+            self.recording_status_text.value = ""
 
         self.status_text.value = state.status_message or ""
         self.status_text.visible = bool(state.status_message)
@@ -666,7 +678,6 @@ class MainView:
         self.replay_play_button.content = "Play" if replay.paused else "Pause"
         self.replay_play_button.disabled = self._replay_repeat_active
         self.set_point_button.disabled = self._replay_repeat_active
-        self.resume_button.disabled = False
         self.set_point_text.value = replay.set_point_text
         self.time_difference_text.value = replay.time_difference_text
         self.frame_difference_text.value = replay.frame_difference_text
