@@ -98,11 +98,21 @@ def _bgra_payload(raw: RawVideo) -> np.ndarray:
                 f"NDI BGRA frame {array.shape} is not compatible with "
                 f"{raw.width}x{raw.height} and stride {raw.line_stride}"
             )
+        pixels = rows[:, :row_bytes].reshape(raw.height, raw.width, 4)
+    elif array.ndim == 3:
+        if array.shape[0] != raw.height or array.shape[1] < raw.width or array.shape[2] != 4:
+            raise NdiUnsupportedFormatError(
+                f"NDI BGRA frame {array.shape} is not compatible with "
+                f"{raw.width}x{raw.height} pixels"
+            )
+        pixels = array[: raw.height, : raw.width, :]
     else:
         raise NdiUnsupportedFormatError(
-            f"NDI BGRA frame must be a byte buffer or row matrix; got shape {array.shape}"
+            f"NDI BGRA frame has unsupported shape {array.shape}; expected flat bytes, "
+            "row matrix, or (height, width, 4) BGRA pixels"
         )
-    pixels = rows[:, :row_bytes].reshape(raw.height, raw.width, 4)
+    if array.ndim == 1:
+        pixels = rows[:, :row_bytes].reshape(raw.height, raw.width, 4)
     return np.array(pixels, dtype=np.uint8, copy=True, order="C")
 
 

@@ -120,6 +120,72 @@ def test_bgra_padding_is_removed_and_payload_is_owned() -> None:
     assert not np.shares_memory(payload, native)
 
 
+def test_bgra_3d_pixels_are_copied_into_owned_contiguous_array() -> None:
+    width, height = 3, 2
+    native = np.arange(height * width * 4, dtype=np.uint8).reshape(height, width, 4)
+    original = native.copy()
+    raw = fake_video(
+        width=width,
+        height=height,
+        stride=width * 4,
+        pixel_format="BGRA",
+        data=native,
+    )
+
+    frame = to_video_frame(raw)
+    native[:] = 255
+
+    payload = _payload(frame)
+    assert frame.pixel_format == "BGRA"
+    assert payload.shape == (height, width, 4)
+    assert payload.dtype == np.uint8
+    assert payload.flags.c_contiguous
+    assert np.array_equal(payload, original)
+    assert not np.shares_memory(payload, native)
+
+
+def test_bgra_3d_non_contiguous_view_is_normalized() -> None:
+    width, height = 3, 2
+    base = np.arange(height * (width + 2) * 4, dtype=np.uint8).reshape(height, width + 2, 4)
+    view = base[:, :width, :]
+    raw = fake_video(
+        width=width,
+        height=height,
+        stride=width * 4,
+        pixel_format="BGRA",
+        data=view,
+    )
+
+    payload = _payload(to_video_frame(raw))
+
+    assert np.array_equal(payload, view)
+    assert payload.flags.c_contiguous
+    assert not np.shares_memory(payload, base)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        np.zeros((1, 3, 4), dtype=np.uint8),
+        np.zeros((2, 2, 4), dtype=np.uint8),
+        np.zeros((2, 3, 3), dtype=np.uint8),
+        np.zeros((2, 3, 5), dtype=np.uint8),
+        np.zeros((2, 3, 4), dtype=np.uint16),
+    ],
+)
+def test_malformed_bgra_3d_shape_or_dtype_is_rejected(data: np.ndarray) -> None:
+    raw = fake_video(
+        width=3,
+        height=2,
+        stride=12,
+        pixel_format="BGRA",
+        data=data,
+    )
+
+    with pytest.raises(NdiUnsupportedFormatError):
+        to_video_frame(raw)
+
+
 @pytest.mark.parametrize(
     ("width", "height", "stride", "data"),
     [
