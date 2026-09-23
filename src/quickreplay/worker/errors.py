@@ -2,13 +2,6 @@
 
 import errno
 
-from quickreplay.input.camera.errors import (
-    CameraBackendError,
-    CameraCaptureError,
-    CameraFormatError,
-    CameraNotFoundError,
-    CameraOpenError,
-)
 from quickreplay.input.ndi.errors import (
     NdiCaptureError,
     NdiFormatChangeError,
@@ -51,11 +44,11 @@ def map_worker_error(error: BaseException) -> WorkerErrorCode:
     """Map a component exception to a machine-readable worker error code."""
     if _contains_disk_full(error):
         return WorkerErrorCode.DISK_FULL
-    if isinstance(error, (NdiSourceNotFoundError, CameraNotFoundError)):
+    if isinstance(error, NdiSourceNotFoundError):
         return WorkerErrorCode.INPUT_NOT_FOUND
     if isinstance(
         error,
-        (NdiInitializationError, NdiReceiverError, CameraOpenError, CameraBackendError),
+        (NdiInitializationError, NdiReceiverError),
     ):
         return WorkerErrorCode.INPUT_OPEN_FAILED
     if isinstance(error, (NdiCaptureError, PipelineStartupError)):
@@ -65,14 +58,11 @@ def map_worker_error(error: BaseException) -> WorkerErrorCode:
         (
             NdiUnsupportedFormatError,
             NdiFormatChangeError,
-            CameraFormatError,
             SegmentFormatError,
             PipelineFormatChangeError,
         ),
     ):
         return WorkerErrorCode.UNSUPPORTED_FORMAT
-    if isinstance(error, CameraCaptureError):
-        return WorkerErrorCode.CAPTURE_FAILED
     if isinstance(error, SegmentEncodingError):
         return WorkerErrorCode.ENCODER_FAILED
     if isinstance(error, SegmentMuxError):

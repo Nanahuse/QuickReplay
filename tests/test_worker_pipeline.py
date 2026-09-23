@@ -142,7 +142,7 @@ def test_audio_after_video_only_session_is_a_format_change(tmp_path: Path) -> No
     assert isinstance(fatal, PipelineFormatChangeError)
 
 
-def test_camera_video_only_has_no_holdback(tmp_path: Path) -> None:
+def test_video_only_input_has_no_audio_holdback(tmp_path: Path) -> None:
     script, video_frames, _ = build_script(duration_ns=1_000_000_000, fps=FPS)
     source = FakeInputSource(script, video_stream=video_info(FPS))
     pipeline = _pipeline(

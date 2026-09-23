@@ -4,7 +4,6 @@ Nothing here imports Flet.  Display formatting may use floats, but the domain
 values (:class:`~fractions.Fraction`, nanoseconds) stay the source of truth.
 """
 
-import sys
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -171,13 +170,3 @@ def control_state(
         settings_enabled=state != ApplicationState.SHUTTING_DOWN,
         discovering=discovering,
     )
-
-
-def camera_backend_options(platform: str | None = None) -> tuple[str, ...]:
-    """Camera backends offered for the given platform."""
-    name = sys.platform if platform is None else platform
-    if name.startswith("win"):
-        return ("any", "msmf", "dshow")
-    if name.startswith("linux"):
-        return ("any", "v4l2")
-    return ("any",)

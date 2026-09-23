@@ -209,7 +209,7 @@ class RecorderWorkerRuntime:
 
     def _on_discover(self, command: DiscoverInputs) -> None:
         try:
-            inputs = self._discovery(camera_backend=command.camera_backend)
+            inputs = self._discovery()
         except BaseException as exc:  # noqa: BLE001 - discovery failure is non-fatal
             self._emit(WorkerError(map_worker_error(exc), str(exc), command.request_id))
             return

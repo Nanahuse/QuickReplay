@@ -6,7 +6,6 @@ no file I/O.
 """
 
 from collections.abc import Callable
-from fractions import Fraction
 from typing import Any, TypeVar
 
 from quickreplay.configuration.errors import (
@@ -20,20 +19,12 @@ from quickreplay.configuration.models import (
     ReplayConfig,
     UiConfig,
 )
-from quickreplay.input.models import (
-    CameraInputConfig,
-    CameraMode,
-    InputConfig,
-    NdiInputConfig,
-)
+from quickreplay.input.models import InputConfig, NdiInputConfig
 
 _T = TypeVar("_T")
 
 _TOP_LEVEL_FIELDS = {"schema_version", "input", "recording", "replay", "ui"}
-_CAMERA_FIELDS = {"type", "device_name", "device_index", "backend", "mode"}
 _NDI_FIELDS = {"type", "source_name"}
-_MODE_FIELDS = {"width", "height", "fps"}
-_FRACTION_FIELDS = {"numerator", "denominator"}
 _RECORDING_FIELDS = {"buffer_duration_seconds"}
 _REPLAY_FIELDS = {"mpv_executable"}
 
@@ -84,37 +75,7 @@ def _parse_input(value: object) -> InputConfig | None:
         _reject_unknown(obj, _NDI_FIELDS, "input")
         source_name = _require_str(_required(obj, "source_name", "input"), "input.source_name")
         return _domain(lambda: NdiInputConfig(source_name), "input")
-    if kind == "camera":
-        _reject_unknown(obj, _CAMERA_FIELDS, "input")
-        device_name = _require_str(_required(obj, "device_name", "input"), "input.device_name")
-        device_index = _require_int(_required(obj, "device_index", "input"), "input.device_index")
-        backend = _require_str(_required(obj, "backend", "input"), "input.backend")
-        mode = _parse_mode(obj["mode"]) if "mode" in obj else None
-        return _domain(lambda: CameraInputConfig(device_name, device_index, backend, mode), "input")
     raise ConfigurationValidationError(f"input.type {kind!r} is not supported")
-
-
-def _parse_mode(value: object) -> CameraMode | None:
-    if value is None:
-        return None
-    obj = _require_object(value, "input.mode")
-    _reject_unknown(obj, _MODE_FIELDS, "input.mode")
-    width = _require_int(_required(obj, "width", "input.mode"), "input.mode.width")
-    height = _require_int(_required(obj, "height", "input.mode"), "input.mode.height")
-    fps = _parse_fraction(_required(obj, "fps", "input.mode"), "input.mode.fps")
-    return _domain(lambda: CameraMode(width, height, fps), "input.mode")
-
-
-def _parse_fraction(value: object, path: str) -> Fraction:
-    obj = _require_object(value, path)
-    _reject_unknown(obj, _FRACTION_FIELDS, path)
-    numerator = _require_int(_required(obj, "numerator", path), f"{path}.numerator")
-    denominator = _require_int(_required(obj, "denominator", path), f"{path}.denominator")
-    if numerator <= 0:
-        raise ConfigurationValidationError(f"{path}.numerator must be a positive integer")
-    if denominator <= 0:
-        raise ConfigurationValidationError(f"{path}.denominator must be a positive integer")
-    return Fraction(numerator, denominator)
 
 
 def _parse_recording(value: object) -> RecordingConfig:
@@ -148,26 +109,7 @@ def _input_to_json_object(input_config: InputConfig | None) -> dict[str, object]
         return None
     if isinstance(input_config, NdiInputConfig):
         return {"type": "ndi", "source_name": input_config.source_name}
-    return {
-        "type": "camera",
-        "device_name": input_config.device_name,
-        "device_index": input_config.device_index,
-        "backend": input_config.backend,
-        "mode": _mode_to_json_object(input_config.mode),
-    }
-
-
-def _mode_to_json_object(mode: CameraMode | None) -> dict[str, object] | None:
-    if mode is None:
-        return None
-    return {
-        "width": mode.width,
-        "height": mode.height,
-        "fps": {
-            "numerator": mode.fps.numerator,
-            "denominator": mode.fps.denominator,
-        },
-    }
+    raise TypeError(f"unsupported input configuration: {input_config!r}")
 
 
 # -- helpers ---------------------------------------------------------------

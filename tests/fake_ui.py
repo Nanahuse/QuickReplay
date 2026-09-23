@@ -41,7 +41,7 @@ class FakeController:
     def start_recording(self, input_config: InputConfig) -> None:
         self._record("start_recording")
 
-    def discover_inputs(self, *, camera_backend: str = "any") -> UUID:
+    def discover_inputs(self) -> UUID:
         self._record("discover_inputs")
         return uuid4()
 
@@ -149,8 +149,8 @@ class FakeBridge:
     async def start_recording(self, input_config: InputConfig) -> None:
         self.recording_configs.append(input_config)
 
-    async def discover_inputs(self, *, camera_backend: str = "any") -> UUID:
-        self.discovery_requests.append(camera_backend)
+    async def discover_inputs(self) -> UUID:
+        self.discovery_requests.append("ndi")
         self.next_discovery_id = uuid4()
         return self.next_discovery_id
 

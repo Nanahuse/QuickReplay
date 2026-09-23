@@ -120,10 +120,10 @@ class BlockingBridge(CountingBridge):
         await self.start_release.wait()
         self.started = True
 
-    async def discover_inputs(self, *, camera_backend: str = "any"):
+    async def discover_inputs(self):
         self.discover_entered.set()
         await self.discover_release.wait()
-        return await super().discover_inputs(camera_backend=camera_backend)
+        return await super().discover_inputs()
 
     async def step_forward(self) -> None:
         self.step_entered.set()

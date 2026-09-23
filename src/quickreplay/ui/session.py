@@ -24,20 +24,15 @@ from quickreplay.configuration.errors import ConfigurationError
 from quickreplay.configuration.models import QuickReplayConfig
 from quickreplay.configuration.store import ConfigurationStore
 from quickreplay.input.models import (
-    CameraInputConfig,
-    CameraInputDescriptor,
-    CameraMode,
     InputConfig,
     InputDescriptor,
     NdiInputConfig,
-    NdiInputDescriptor,
 )
 from quickreplay.replay.errors import MpvProcessExitedError
 from quickreplay.replay.models import SetPoint
 from quickreplay.ui.presentation import (
     ControlState,
     MetricsView,
-    camera_backend_options,
     control_state,
     format_audio,
     format_duration_ns,
@@ -58,7 +53,6 @@ from quickreplay.ui.settings import (
 )
 
 NDI_KIND = "ndi"
-CAMERA_KIND = "camera"
 
 
 class BridgeLike(Protocol):
@@ -68,7 +62,7 @@ class BridgeLike(Protocol):
 
     async def start_recording(self, input_config: InputConfig) -> None: ...
 
-    async def discover_inputs(self, *, camera_backend: str = "any") -> UUID: ...
+    async def discover_inputs(self) -> UUID: ...
 
     async def request_replay(self) -> UUID: ...
 
@@ -113,7 +107,6 @@ class InputOption:
     """A selectable discovered input."""
 
     key: str
-    kind: str
     label: str
     descriptor: InputDescriptor
 
@@ -151,31 +144,19 @@ class UiViewState:
     replay: ReplayView | None
     input_options: tuple[InputOption, ...]
     selected_key: str | None
-    input_kind: str
-    show_camera_backend: bool
-    camera_backend: str
-    camera_backend_options: tuple[str, ...]
     discovering: bool
 
 
 def _option_key(descriptor: InputDescriptor) -> str:
-    if isinstance(descriptor, NdiInputDescriptor):
-        return f"{NDI_KIND}:{descriptor.source_name}"
-    return f"{CAMERA_KIND}:{descriptor.device_index}"
+    return f"{NDI_KIND}:{descriptor.source_name}"
 
 
 def _option_label(descriptor: InputDescriptor) -> str:
-    if isinstance(descriptor, NdiInputDescriptor):
-        return descriptor.source_name
-    return f"{descriptor.device_name} (#{descriptor.device_index})"
+    return descriptor.source_name
 
 
 def _config_matches(configured: InputConfig, descriptor: InputDescriptor) -> bool:
-    if isinstance(configured, NdiInputConfig) and isinstance(descriptor, NdiInputDescriptor):
-        return configured.source_name == descriptor.source_name
-    if isinstance(configured, CameraInputConfig) and isinstance(descriptor, CameraInputDescriptor):
-        return configured.device_index == descriptor.device_index
-    return False
+    return configured.source_name == descriptor.source_name
 
 
 class UiSession:
@@ -193,8 +174,6 @@ class UiSession:
 
         self._snapshot = ApplicationSnapshot(state=ApplicationState.STARTING)
         self._descriptors: tuple[InputDescriptor, ...] = ()
-        self._input_kind = self._initial_kind(config.input)
-        self._camera_backend = self._initial_backend(config.input)
         self._selected_key: str | None = None
         self._pending_discovery_id: UUID | None = None
         self._discovering = False
@@ -217,10 +196,6 @@ class UiSession:
     @property
     def config(self) -> QuickReplayConfig:
         return self._config
-
-    @property
-    def input_kind(self) -> str:
-        return self._input_kind
 
     def view_state(self) -> UiViewState:
         stream_info = self._snapshot.stream_info
@@ -245,10 +220,6 @@ class UiSession:
             replay=self._replay_view(),
             input_options=self._options(),
             selected_key=self._selected_key,
-            input_kind=self._input_kind,
-            show_camera_backend=self._input_kind == CAMERA_KIND,
-            camera_backend=self._camera_backend,
-            camera_backend_options=camera_backend_options(),
             discovering=self._discovering,
         )
 
@@ -264,14 +235,7 @@ class UiSession:
         if option is None:
             return None
         descriptor = option.descriptor
-        if isinstance(descriptor, NdiInputDescriptor):
-            return NdiInputConfig(descriptor.source_name)
-        return CameraInputConfig(
-            device_name=descriptor.device_name,
-            device_index=descriptor.device_index,
-            backend=self._camera_backend,
-            mode=self._saved_camera_mode(descriptor),
-        )
+        return NdiInputConfig(descriptor.source_name)
 
     # -- actions -----------------------------------------------------------
     async def start(self) -> None:
@@ -281,9 +245,7 @@ class UiSession:
     async def refresh(self) -> None:
         self._discovering = True
         self._status = "Discovering..."
-        self._pending_discovery_id = await self._bridge.discover_inputs(
-            camera_backend=self._camera_backend
-        )
+        self._pending_discovery_id = await self._bridge.discover_inputs()
 
     async def poll(self) -> None:
         events = await self._bridge.poll()
@@ -302,23 +264,6 @@ class UiSession:
             self._reset_replay_state()
             if self._snapshot.state != ApplicationState.ERROR:
                 self._error = None
-
-    async def set_input_kind(self, kind: str) -> None:
-        if kind not in (NDI_KIND, CAMERA_KIND) or kind == self._input_kind:
-            return
-        self._input_kind = kind
-        self._selected_key = None
-        self._resolve_selection()
-        if kind == CAMERA_KIND:
-            await self.refresh()
-
-    async def set_camera_backend(self, backend: str) -> None:
-        if backend == self._camera_backend:
-            return
-        self._camera_backend = backend
-        self._selected_key = None
-        self._resolve_selection()
-        await self.refresh()
 
     def select(self, key: str | None) -> None:
         self._selected_key = key
@@ -363,34 +308,30 @@ class UiSession:
     # -- settings ----------------------------------------------------------
     def settings_draft(self) -> SettingsDraft:
         """Snapshot the persisted config and current selection into a draft."""
-        return draft_from_config(self._config, camera_input=self.build_input_config())
+        return draft_from_config(self._config)
 
     async def apply_settings(self, draft: SettingsDraft) -> SettingsApplyResult:
         """Validate and persist *draft*, replacing the session config on success.
 
         The candidate configuration is written first and the in-memory config is
         only replaced after the store write succeeded, so a failed save never
-        leaves the session pointing at an unsaved configuration.  Camera mode
-        changes are picked up by :meth:`build_input_config` for the next start.
+        leaves the session pointing at an unsaved configuration.
         """
         if self._settings_applying:
             return SettingsApplyResult(ok=False, message="Settings are already being applied")
         self._settings_applying = True
         try:
-            validation = build_settings_config(
-                draft, self._config, camera_input=self.build_input_config()
-            )
+            validation = build_settings_config(draft, self._config)
             if validation.config is None:
                 return SettingsApplyResult(ok=False, errors=validation.errors)
             candidate = validation.config
             restart = restart_required(self._config, candidate)
-            input_changed = self._config.input != candidate.input
             try:
                 await asyncio.to_thread(self._store.save, candidate)
             except ConfigurationError as exc:
                 return SettingsApplyResult(ok=False, message=f"Could not save settings: {exc}")
             self._config = candidate
-            self._status = apply_message(restart=restart, input_changed=input_changed)
+            self._status = apply_message(restart=restart)
             return SettingsApplyResult(ok=True, restart_required=restart, message=self._status)
         finally:
             self._settings_applying = False
@@ -558,30 +499,8 @@ class UiSession:
         return tuple(
             InputOption(
                 key=_option_key(descriptor),
-                kind=self._input_kind,
                 label=_option_label(descriptor),
                 descriptor=descriptor,
             )
             for descriptor in self._descriptors
-            if self._descriptor_kind(descriptor) == self._input_kind
         )
-
-    def _descriptor_kind(self, descriptor: InputDescriptor) -> str:
-        return CAMERA_KIND if isinstance(descriptor, CameraInputDescriptor) else NDI_KIND
-
-    def _saved_camera_mode(self, descriptor: CameraInputDescriptor) -> CameraMode | None:
-        configured = self._config.input
-        if (
-            isinstance(configured, CameraInputConfig)
-            and configured.device_index == descriptor.device_index
-        ):
-            return configured.mode
-        return None
-
-    def _initial_kind(self, configured: InputConfig | None) -> str:
-        return CAMERA_KIND if isinstance(configured, CameraInputConfig) else NDI_KIND
-
-    def _initial_backend(self, configured: InputConfig | None) -> str:
-        if isinstance(configured, CameraInputConfig):
-            return configured.backend
-        return "any"

@@ -20,8 +20,6 @@ from quickreplay.app.state import ApplicationState
 from quickreplay.ui.presentation import format_duration_ns
 from quickreplay.ui.replay_repeat import ReplayActionRepeater
 from quickreplay.ui.session import (
-    CAMERA_KIND,
-    NDI_KIND,
     ReplayView,
     UiSession,
     UiViewState,
@@ -37,7 +35,7 @@ REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
 SESSION_WINDOW_WIDTH = 420
-SETUP_WINDOW_SIZE = (710, 500)
+SETUP_WINDOW_SIZE = (560, 360)
 RECORDING_WINDOW_HEIGHT = 120
 REPLAY_WINDOW_HEIGHT = 300
 REPLAY_CONTENT_WIDTH = 380
@@ -123,19 +121,8 @@ class MainView:
         self._resume_in_progress = False
 
         self.state_text = ft.Text("", weight=ft.FontWeight.BOLD)
-        self.kind_button = ft.SegmentedButton(
-            segments=[
-                ft.Segment(value=NDI_KIND, label=ft.Text("NDI")),
-                ft.Segment(value=CAMERA_KIND, label=ft.Text("Camera")),
-            ],
-            selected=[NDI_KIND],
-            on_change=self._on_kind_change,
-        )
         self.source_dropdown = ft.Dropdown(
-            label="Input", options=[], width=470, on_select=self._on_source_select
-        )
-        self.backend_dropdown = ft.Dropdown(
-            label="Backend", options=[], width=160, on_select=self._on_backend_select
+            label="NDI source", options=[], width=400, on_select=self._on_source_select
         )
         self.refresh_button = ft.FilledButton(content="Refresh", on_click=self._on_refresh)
         self.start_button = ft.FilledButton(content="Start Recording", on_click=self._on_start)
@@ -202,9 +189,7 @@ class MainView:
         self.input_section = ft.Column(
             controls=[
                 ft.Text("Input", weight=ft.FontWeight.BOLD),
-                self.kind_button,
                 ft.Row(controls=[self.source_dropdown, self.refresh_button]),
-                self.backend_dropdown,
             ],
             spacing=10,
         )
@@ -214,18 +199,6 @@ class MainView:
         )
 
         # Setup settings fields (validation and persistence remain in UiSession).
-        self._settings_camera_available = False
-        self.settings_camera_label = ft.Text("", italic=True, color=ft.Colors.BLUE_GREY)
-        self.settings_camera_hint = ft.Text("Select a camera input to edit its capture mode.")
-        self.settings_explicit_checkbox = ft.Checkbox(
-            label="Use explicit camera mode",
-            value=False,
-            on_change=self._on_settings_explicit_change,
-        )
-        self.settings_width_field = ft.TextField(label="Width", width=150)
-        self.settings_height_field = ft.TextField(label="Height", width=150)
-        self.settings_numerator_field = ft.TextField(label="Numerator", width=150)
-        self.settings_denominator_field = ft.TextField(label="Denominator", width=150)
         self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
         self.settings_mpv_field = ft.TextField(label="mpv executable", width=260)
         self.settings_error_text = ft.Text("", color=ft.Colors.RED)
@@ -234,24 +207,6 @@ class MainView:
         )
 
         self.setup_button = ft.FilledButton(content="← Setup", on_click=self._on_setup)
-        camera_section = ft.Column(
-            controls=[
-                ft.Text("Camera", weight=ft.FontWeight.BOLD),
-                self.settings_camera_label,
-                self.settings_explicit_checkbox,
-                self.settings_camera_hint,
-                ft.Row(controls=[self.settings_width_field, self.settings_height_field]),
-                ft.Row(
-                    controls=[
-                        self.settings_numerator_field,
-                        ft.Text("/"),
-                        self.settings_denominator_field,
-                    ]
-                ),
-            ],
-            spacing=6,
-            tight=True,
-        )
         recording_replay_section = ft.Column(
             controls=[
                 ft.Text("Recording", weight=ft.FontWeight.BOLD),
@@ -270,7 +225,7 @@ class MainView:
             controls=[
                 self.input_section,
                 ft.Divider(),
-                ft.Row(controls=[camera_section, recording_replay_section], spacing=24),
+                recording_replay_section,
             ],
             spacing=6,
             tight=True,
@@ -549,21 +504,11 @@ class MainView:
             else 1.0
         )
 
-        self.kind_button.selected = [state.input_kind]
-        self.kind_button.disabled = not state.controls.input_enabled
-
         self.source_dropdown.options = [
             ft.DropdownOption(key=option.key, text=option.label) for option in state.input_options
         ]
         self.source_dropdown.value = state.selected_key
         self.source_dropdown.disabled = not state.controls.input_enabled
-
-        self.backend_dropdown.options = [
-            ft.DropdownOption(key=backend, text=backend) for backend in state.camera_backend_options
-        ]
-        self.backend_dropdown.value = state.camera_backend
-        self.backend_dropdown.visible = state.show_camera_backend
-        self.backend_dropdown.disabled = not state.controls.input_enabled
 
         self.refresh_button.content = "Discovering..." if state.discovering else "Refresh"
         self.refresh_button.disabled = not state.controls.refresh_enabled
@@ -743,29 +688,11 @@ class MainView:
             await action()
 
     # -- action handlers ---------------------------------------------------
-    def _on_kind_change(self, event: ft.Event) -> None:
-        selected = self.kind_button.selected
-        if selected:
-            self._run_task(self._change_kind, next(iter(selected)))
-
-    async def _change_kind(self, kind: str) -> None:
-        await self._run_action(lambda: self.session.set_input_kind(kind))
-
     def _on_source_select(self, event: ft.Event) -> None:
         if not self.is_active:
             return
         self.session.select(self.source_dropdown.value)
         self._refresh_view()
-
-    def _on_backend_select(self, event: ft.Event) -> None:
-        self._run_task(self._change_backend, self.backend_dropdown.value)
-
-    async def _change_backend(self, backend: str | None) -> None:
-        if not self.is_active:
-            return
-        if backend:
-            await self.session.set_camera_backend(backend)
-        await self._render_and_update()
 
     def _on_refresh(self, event: ft.Event) -> None:
         self._run_task(self._refresh)
@@ -859,49 +786,14 @@ class MainView:
 
     def _populate_settings_fields(self) -> None:
         draft = self.session.settings_draft()
-        self._settings_camera_available = draft.camera_available
-        self.settings_explicit_checkbox.value = draft.use_explicit_camera_mode
-        self.settings_width_field.value = draft.camera_width
-        self.settings_height_field.value = draft.camera_height
-        self.settings_numerator_field.value = draft.camera_fps_numerator
-        self.settings_denominator_field.value = draft.camera_fps_denominator
         self.settings_buffer_field.value = draft.buffer_duration_seconds
         self.settings_mpv_field.value = draft.mpv_executable
-        self.settings_camera_label.value = (
-            f"Editing: {draft.camera_label}" if draft.camera_available else ""
-        )
         self.settings_error_text.value = ""
-        self._apply_settings_field_state()
-
-    def _on_settings_explicit_change(self, event: ft.Event) -> None:
-        if not self.is_active:
-            return
-        self._apply_settings_field_state()
-        self._update_page()
-
-    def _apply_settings_field_state(self) -> None:
-        available = self._settings_camera_available
-        explicit = bool(self.settings_explicit_checkbox.value)
-        self.settings_explicit_checkbox.disabled = not available
-        self.settings_camera_hint.visible = not available
-        for field in (
-            self.settings_width_field,
-            self.settings_height_field,
-            self.settings_numerator_field,
-            self.settings_denominator_field,
-        ):
-            field.disabled = not (available and explicit)
 
     def _settings_draft(self) -> SettingsDraft:
         return SettingsDraft(
-            use_explicit_camera_mode=bool(self.settings_explicit_checkbox.value),
-            camera_width=self.settings_width_field.value or "",
-            camera_height=self.settings_height_field.value or "",
-            camera_fps_numerator=self.settings_numerator_field.value or "",
-            camera_fps_denominator=self.settings_denominator_field.value or "",
             buffer_duration_seconds=self.settings_buffer_field.value or "",
             mpv_executable=self.settings_mpv_field.value or "",
-            camera_available=self._settings_camera_available,
         )
 
     def _on_settings_apply(self, event: ft.Event) -> None:

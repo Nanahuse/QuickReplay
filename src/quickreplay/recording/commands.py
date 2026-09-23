@@ -42,14 +42,9 @@ class ChangeInput:
 
 @dataclass(frozen=True, slots=True)
 class DiscoverInputs:
-    """Request the list of available inputs.
-
-    ``camera_backend`` selects which OpenCV backend is probed for cameras;
-    it defaults to ``"any"`` so existing callers keep their behaviour.
-    """
+    """Request the list of available inputs."""
 
     request_id: UUID
-    camera_backend: str = "any"
 
 
 @dataclass(frozen=True, slots=True)

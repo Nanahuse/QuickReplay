@@ -19,9 +19,6 @@ from quickreplay.configuration.models import QuickReplayConfig, RecordingConfig
 from quickreplay.configuration.store import ConfigurationStore
 from quickreplay.input.models import (
     AudioStreamInfo,
-    CameraInputConfig,
-    CameraInputDescriptor,
-    CameraMode,
     NdiInputConfig,
     NdiInputDescriptor,
     StreamInfo,
@@ -30,7 +27,7 @@ from quickreplay.input.models import (
 from quickreplay.recording.models import RecordingMetrics
 from quickreplay.replay.errors import MpvProcessExitedError
 from quickreplay.replay.models import ReplayAsset, SetPoint
-from quickreplay.ui.session import CAMERA_KIND, UiSession
+from quickreplay.ui.session import UiSession
 
 FPS = Fraction(60, 1)
 
@@ -99,7 +96,7 @@ def test_start_discovers_inputs(tmp_path: Path) -> None:
     asyncio.run(session.start())
 
     assert bridge.started
-    assert bridge.discovery_requests == ["any"]
+    assert bridge.discovery_requests == ["ndi"]
 
 
 def test_discovery_resolves_and_selects_first_input(tmp_path: Path) -> None:
@@ -142,19 +139,6 @@ def test_saved_ndi_is_restored(tmp_path: Path) -> None:
     assert state.controls.start_enabled
 
 
-def test_saved_camera_is_restored_with_mode(tmp_path: Path) -> None:
-    mode = CameraMode(1280, 720, Fraction(60000, 1001))
-    config = QuickReplayConfig(input=CameraInputConfig("Camera 1", 1, "dshow", mode))
-    session, bridge, _ = _session(tmp_path, config=config)
-    asyncio.run(session.start())
-    asyncio.run(_discover(session, bridge, (CameraInputDescriptor("Camera 1", 1),)))
-
-    assert session.view_state().input_kind == CAMERA_KIND
-    assert session.view_state().camera_backend == "dshow"
-    built = session.build_input_config()
-    assert built == CameraInputConfig("Camera 1", 1, "dshow", mode)
-
-
 def test_unavailable_saved_input_disables_start(tmp_path: Path) -> None:
     config = QuickReplayConfig(input=NdiInputConfig("Missing"))
     session, bridge, _ = _session(tmp_path, config=config)
@@ -165,26 +149,6 @@ def test_unavailable_saved_input_disables_start(tmp_path: Path) -> None:
     assert state.selected_key is None
     assert not state.controls.start_enabled
     assert state.status_message == "Configured input is not currently available"
-
-
-def test_new_camera_selection_has_no_mode(tmp_path: Path) -> None:
-    session, bridge, _ = _session(tmp_path)
-    asyncio.run(session.start())
-    asyncio.run(_discover(session, bridge, (CameraInputDescriptor("Camera 1", 1),)))
-    asyncio.run(session.set_input_kind(CAMERA_KIND))
-
-    built = session.build_input_config()
-    assert built == CameraInputConfig("Camera 1", 1, "any", None)
-
-
-def test_backend_change_refreshes_camera_discovery(tmp_path: Path) -> None:
-    session, bridge, _ = _session(tmp_path)
-    asyncio.run(session.start())
-    asyncio.run(session.set_input_kind(CAMERA_KIND))
-
-    asyncio.run(session.set_camera_backend("dshow"))
-
-    assert bridge.discovery_requests[-1] == "dshow"
 
 
 def test_ndi_config_from_selection(tmp_path: Path) -> None:

@@ -1,7 +1,7 @@
 """Common input source abstraction shared by the input implementations.
 
-Both the NDI input (this phase) and the future Camera input implement this
-protocol so they can be connected to the same recording pipeline.
+Input implementations share this protocol so they can be connected to the
+same recording pipeline.
 
 ``open`` prepares the source but does not necessarily establish the stream
 format: NDI cannot report resolution or frame rate before the first frame

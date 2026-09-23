@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 
 from fake_worker_input import ScriptedInputFactory, WorkerHarness  # noqa: E402
 
-from quickreplay.input.models import CameraInputConfig, NdiInputConfig  # noqa: E402
+from quickreplay.input.models import NdiInputConfig  # noqa: E402
 from quickreplay.recording.commands import ChangeInput, Shutdown, StartRecording  # noqa: E402
 from quickreplay.recording.events import RecordingMetricsUpdated  # noqa: E402
 from quickreplay.recording.models import WorkerState  # noqa: E402
@@ -73,7 +73,7 @@ def _change_input(iterations: int) -> int:
         problem = ""
         try:
             _start(harness, factory)
-            harness.send(ChangeInput(uuid4(), CameraInputConfig("cam", 0, "any")))
+            harness.send(ChangeInput(uuid4(), NdiInputConfig("replacement")))
             harness.wait_state(WorkerState.RECORDING, timeout=5.0)
             problem = _check_cleanup(tmp, expect_session_dirs=1)
         except AssertionError as exc:

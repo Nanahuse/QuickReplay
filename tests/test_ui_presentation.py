@@ -11,7 +11,6 @@ from quickreplay.input.models import (
 from quickreplay.recording.models import RecordingMetrics
 from quickreplay.ui.presentation import (
     buffer_fraction,
-    camera_backend_options,
     control_state,
     format_audio,
     format_buffer,
@@ -134,12 +133,6 @@ def test_control_state_settings_enabled_except_when_shutting_down() -> None:
         ApplicationState.SHUTTING_DOWN, has_selection=True, discovering=False
     )
     assert not shutting_down.settings_enabled
-
-
-def test_camera_backend_options() -> None:
-    assert camera_backend_options("win32") == ("any", "msmf", "dshow")
-    assert camera_backend_options("linux") == ("any", "v4l2")
-    assert camera_backend_options("darwin") == ("any",)
 
 
 def test_format_duration_ns() -> None:

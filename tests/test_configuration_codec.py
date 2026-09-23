@@ -1,7 +1,5 @@
 """Configuration JSON codec: strict validation and round trips."""
 
-from fractions import Fraction
-
 import pytest
 
 from quickreplay.configuration.codec import (
@@ -17,7 +15,7 @@ from quickreplay.configuration.models import (
     RecordingConfig,
     ReplayConfig,
 )
-from quickreplay.input.models import CameraInputConfig, CameraMode, NdiInputConfig
+from quickreplay.input.models import NdiInputConfig
 
 
 def test_default_round_trip() -> None:
@@ -52,50 +50,6 @@ def test_unicode_ndi_round_trip() -> None:
     assert config_from_json_object(obj).input == NdiInputConfig(source)
 
 
-def test_camera_without_mode_round_trip() -> None:
-    config = QuickReplayConfig(input=CameraInputConfig("Camera 1", 1, "dshow", None))
-    obj = config_to_json_object(config)
-    assert obj["input"] == {
-        "type": "camera",
-        "device_name": "Camera 1",
-        "device_index": 1,
-        "backend": "dshow",
-        "mode": None,
-    }
-    assert config_from_json_object(obj).input == config.input
-
-
-def _fps_object(obj: dict[str, object]) -> object:
-    input_obj = obj["input"]
-    assert isinstance(input_obj, dict)
-    mode_obj = input_obj["mode"]
-    assert isinstance(mode_obj, dict)
-    return mode_obj["fps"]
-
-
-def test_camera_mode_60fps_round_trip() -> None:
-    mode = CameraMode(1920, 1080, Fraction(60, 1))
-    config = QuickReplayConfig(input=CameraInputConfig("Camera 1", 1, "dshow", mode))
-    obj = config_to_json_object(config)
-    assert _fps_object(obj) == {"numerator": 60, "denominator": 1}
-    restored = config_from_json_object(obj)
-    assert isinstance(restored.input, CameraInputConfig)
-    assert restored.input.mode == mode
-    assert restored.input.mode is not None
-    assert isinstance(restored.input.mode.fps, Fraction)
-
-
-def test_camera_mode_5994fps_is_exact() -> None:
-    mode = CameraMode(1920, 1080, Fraction(60000, 1001))
-    config = QuickReplayConfig(input=CameraInputConfig("Camera", 0, "any", mode))
-    obj = config_to_json_object(config)
-    assert _fps_object(obj) == {"numerator": 60000, "denominator": 1001}
-    restored = config_from_json_object(obj)
-    assert isinstance(restored.input, CameraInputConfig)
-    assert restored.input.mode is not None
-    assert restored.input.mode.fps == Fraction(60000, 1001)
-
-
 def test_missing_sections_use_defaults() -> None:
     restored = config_from_json_object({"schema_version": 1})
     assert restored == QuickReplayConfig()
@@ -106,6 +60,11 @@ def test_unknown_input_type_is_rejected() -> None:
         config_from_json_object({"schema_version": 1, "input": {"type": "foo"}})
 
 
+def test_camera_input_type_is_unsupported() -> None:
+    with pytest.raises(ConfigurationValidationError, match="input.type 'camera' is not supported"):
+        config_from_json_object({"schema_version": 1, "input": {"type": "camera"}})
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -114,16 +73,6 @@ def test_unknown_input_type_is_rejected() -> None:
         {"schema_version": 1, "replay": {"mpv_executable": "mpv", "x": 1}},
         {"schema_version": 1, "ui": {"x": 1}},
         {"schema_version": 1, "input": {"type": "ndi", "source_name": "x", "y": 1}},
-        {
-            "schema_version": 1,
-            "input": {
-                "type": "camera",
-                "device_name": "c",
-                "device_index": 0,
-                "backend": "any",
-                "extra": 1,
-            },
-        },
     ],
 )
 def test_unknown_fields_are_rejected(value: object) -> None:
@@ -153,44 +102,6 @@ def test_missing_schema_version_is_rejected() -> None:
         {"schema_version": 1, "replay": {"mpv_executable": 5}},
         {"schema_version": 1, "input": {"type": "ndi", "source_name": ""}},
         {"schema_version": 1, "input": {"type": "ndi", "source_name": 5}},
-        {
-            "schema_version": 1,
-            "input": {
-                "type": "camera",
-                "device_name": "c",
-                "device_index": True,
-                "backend": "any",
-            },
-        },
-        {
-            "schema_version": 1,
-            "input": {
-                "type": "camera",
-                "device_name": "c",
-                "device_index": -1,
-                "backend": "any",
-            },
-        },
-        {
-            "schema_version": 1,
-            "input": {
-                "type": "camera",
-                "device_name": "c",
-                "device_index": 0,
-                "backend": "any",
-                "mode": {"width": 1, "height": 1, "fps": {"numerator": 0, "denominator": 1}},
-            },
-        },
-        {
-            "schema_version": 1,
-            "input": {
-                "type": "camera",
-                "device_name": "c",
-                "device_index": 0,
-                "backend": "any",
-                "mode": {"width": 1, "height": 1, "fps": {"numerator": 1, "denominator": 0}},
-            },
-        },
     ],
 )
 def test_wrong_types_and_values_are_rejected(value: object) -> None:

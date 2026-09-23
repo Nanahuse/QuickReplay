@@ -19,12 +19,6 @@ from quickreplay.application.events import InputsChanged
 from quickreplay.application.models import ApplicationSnapshot
 from quickreplay.configuration.models import QuickReplayConfig
 from quickreplay.configuration.store import ConfigurationStore
-from quickreplay.input.models import (
-    CameraInputConfig,
-    CameraInputDescriptor,
-    CameraMode,
-    NdiInputDescriptor,
-)
 from quickreplay.replay.models import ReplayAsset
 from quickreplay.ui.main_view import (
     REPLAY_CONTENT_WIDTH,
@@ -34,8 +28,7 @@ from quickreplay.ui.main_view import (
     WINDOW_SIZES,
     MainView,
 )
-from quickreplay.ui.session import CAMERA_KIND, UiSession
-from quickreplay.ui.settings import CAMERA_MODE_MESSAGE
+from quickreplay.ui.session import UiSession
 
 
 class _StubPage:
@@ -76,80 +69,34 @@ async def _discover(session: UiSession, bridge: FakeBridge, inputs: tuple) -> No
     await session.poll()
 
 
-def _camera_session(tmp_path: Path) -> tuple[UiSession, FakeBridge]:
-    session, bridge = _session(tmp_path)
-    asyncio.run(session.set_input_kind(CAMERA_KIND))
-    asyncio.run(_discover(session, bridge, (CameraInputDescriptor("Camera 1", 1),)))
-    return session, bridge
-
-
 def _view(session: UiSession) -> tuple[MainView, _StubPage]:
     page = _StubPage()
     return MainView(cast(ft.Page, page), session), page
 
 
-def test_setup_populates_settings_for_selected_camera(tmp_path: Path) -> None:
-    session, _ = _camera_session(tmp_path)
-    view, page = _view(session)
-
-    view._populate_settings_fields()
-
-    assert view.settings_explicit_checkbox.disabled is False
-    assert view.settings_camera_label.value == "Editing: Camera 1 (#1)"
-    assert view.settings_buffer_field.value == "120"
-    assert view.settings_mpv_field.value == "mpv"
-    # No explicit mode is selected yet, so the mode fields stay disabled.
-    assert view.settings_width_field.disabled is True
-    assert view.settings_camera_hint.visible is False
-
-
-def test_camera_fields_enable_when_explicit_mode_is_checked(tmp_path: Path) -> None:
-    session, _ = _camera_session(tmp_path)
-    view, page = _view(session)
-    view._populate_settings_fields()
-
-    view.settings_explicit_checkbox.value = True
-    view._on_settings_explicit_change(cast(ft.Event, object()))
-
-    assert view.settings_width_field.disabled is False
-    assert view.settings_denominator_field.disabled is False
-    assert page.updates >= 1
-
-
-def test_camera_section_disabled_without_camera_selection(tmp_path: Path) -> None:
-    session, bridge = _session(tmp_path)
-    asyncio.run(_discover(session, bridge, (NdiInputDescriptor("OBS"),)))
+def test_setup_is_ndi_only_and_compact(tmp_path: Path) -> None:
+    session, _ = _session(tmp_path)
     view, _page = _view(session)
-
     view._populate_settings_fields()
 
-    assert view.settings_explicit_checkbox.disabled is True
-    assert view.settings_camera_hint.visible is True
-    assert view.settings_width_field.disabled is True
-    assert view.settings_camera_label.value == ""
+    assert view.source_dropdown.label == "NDI source"
+    assert not hasattr(view, "kind_button")
+    assert not hasattr(view, "backend_dropdown")
+    assert WINDOW_SIZES["setup"] == (560, 360)
 
 
 def test_apply_success_closes_dialog_and_shows_status(tmp_path: Path) -> None:
-    session, _ = _camera_session(tmp_path)
+    session, bridge = _session(tmp_path)
+    asyncio.run(_discover(session, bridge, ()))
     view, page = _view(session)
-    view._populate_settings_fields()
-    view.settings_explicit_checkbox.value = True
-    view.settings_width_field.value = "1280"
-    view.settings_height_field.value = "720"
-    view.settings_numerator_field.value = "60"
-    view.settings_denominator_field.value = "1"
 
     asyncio.run(view._apply_settings())
 
-    assert session.config.input == replace(
-        CameraInputConfig("Camera 1", 1, "any", None),
-        mode=CameraMode(1280, 720, Fraction(60, 1)),
-    )
-    assert view.status_text.value == CAMERA_MODE_MESSAGE
+    assert view.status_text.value == "Settings saved."
 
 
 def test_apply_validation_failure_keeps_dialog_open(tmp_path: Path) -> None:
-    session, _ = _camera_session(tmp_path)
+    session, _ = _session(tmp_path)
     view, page = _view(session)
     before = session.config
     view._populate_settings_fields()
