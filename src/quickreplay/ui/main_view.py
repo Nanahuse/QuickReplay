@@ -36,7 +36,7 @@ _DESTROYED_SESSION_MARKER = "destroyed session"
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
-SESSION_WINDOW_WIDTH = 400
+SESSION_WINDOW_WIDTH = 420
 SETUP_WINDOW_SIZE = (710, 500)
 RECORDING_WINDOW_HEIGHT = 120
 REPLAY_WINDOW_HEIGHT = 300
@@ -120,6 +120,7 @@ class MainView:
         self._replay_repeat_active = False
         self._window_mode: str | None = None
         self._stable_session_mode: str | None = None
+        self._resume_in_progress = False
 
         self.state_text = ft.Text("", weight=ft.FontWeight.BOLD)
         self.kind_button = ft.SegmentedButton(
@@ -531,7 +532,9 @@ class MainView:
             self._replay_repeater.release()
             self._replay_repeat_active = False
         self.state_text.value = (
-            "● REC"
+            "Resuming"
+            if self._resume_in_progress
+            else "● REC"
             if state.state is ApplicationState.RECORDING
             else "● REPLAY"
             if state.state is ApplicationState.REPLAY
@@ -578,16 +581,19 @@ class MainView:
             self._stable_session_mode = "replay"
         stable_mode = self._stable_session_mode or "recording"
         self.mode_button.content = "Resume" if stable_mode == "replay" else "Replay"
-        self.mode_button.disabled = state.state not in (
+        session_disabled = session_disabled or self._resume_in_progress
+        self.mode_button.disabled = session_disabled or state.state not in (
             ApplicationState.RECORDING,
             ApplicationState.REPLAY,
         )
-        self.setup_button.disabled = state.state not in (
+        self.setup_button.disabled = session_disabled or state.state not in (
             ApplicationState.RECORDING,
             ApplicationState.REPLAY,
         )
 
         self._render_replay(state.replay)
+        if self._resume_in_progress:
+            self.replay_panel.visible = False
         self.replay_play_button.disabled = session_disabled or self.replay_play_button.disabled
         self.set_point_button.disabled = session_disabled or self.set_point_button.disabled
         self.replay_slider.disabled = session_disabled or self.replay_slider.disabled
@@ -622,13 +628,24 @@ class MainView:
 
     def _update_window_size(self, state: ApplicationState) -> None:
         if state in (ApplicationState.IDLE, ApplicationState.STARTING):
+            self._resume_in_progress = False
             mode = "setup"
         elif state is ApplicationState.RECORDING:
+            self._resume_in_progress = False
             self._stable_session_mode = "recording"
             mode = "recording"
         elif state is ApplicationState.REPLAY:
-            self._stable_session_mode = "replay"
-            mode = "replay"
+            if self._resume_in_progress:
+                mode = "recording"
+            else:
+                self._stable_session_mode = "replay"
+                mode = "replay"
+        elif state is ApplicationState.RESUMING:
+            self._resume_in_progress = True
+            mode = "recording"
+        elif state is ApplicationState.ERROR:
+            self._resume_in_progress = False
+            mode = "replay" if self._stable_session_mode == "replay" else "recording"
         elif self._stable_session_mode == "replay":
             mode = "replay"
         else:
@@ -771,7 +788,15 @@ class MainView:
         if state is ApplicationState.RECORDING:
             await self._run_action(self.session.request_replay)
         elif state is ApplicationState.REPLAY:
-            await self._run_action(self.session.resume_recording)
+            self._resume_in_progress = True
+            self._update_window_size(ApplicationState.RESUMING)
+            self._refresh_view()
+            try:
+                await self._run_action(self.session.resume_recording)
+            except Exception:
+                self._resume_in_progress = False
+                self._refresh_view()
+                raise
 
     # -- replay handlers ---------------------------------------------------
     def _run_replay_action(self, action: str, frames: int | None = None) -> None:

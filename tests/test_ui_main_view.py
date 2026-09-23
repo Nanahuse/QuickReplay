@@ -206,11 +206,11 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert WINDOW_SIZES["recording"][0] == WINDOW_SIZES["replay"][0]
 
 
-def test_window_size_changes_only_on_stable_session_states(tmp_path: Path) -> None:
+def test_resuming_uses_recording_size_before_recording_starts(tmp_path: Path) -> None:
     session, _bridge = _session(tmp_path)
     view, page = _view(session)
     window = type("Window", (), {"width": 0, "height": 0})()
-    setattr(page, "wind" + "ow", window)
+    page.__dict__["window"] = window
 
     view._update_window_size(ApplicationState.RECORDING)
     assert (window.width, window.height) == WINDOW_SIZES["recording"]
@@ -220,7 +220,7 @@ def test_window_size_changes_only_on_stable_session_states(tmp_path: Path) -> No
     view._update_window_size(ApplicationState.REPLAY)
     assert (window.width, window.height) == WINDOW_SIZES["replay"]
     view._update_window_size(ApplicationState.RESUMING)
-    assert (window.width, window.height) == WINDOW_SIZES["replay"]
+    assert (window.width, window.height) == WINDOW_SIZES["recording"]
 
 
 def test_discovery_status_is_limited_to_input_row(tmp_path: Path) -> None:
@@ -258,9 +258,31 @@ def test_replay_transport_buttons_share_fixed_dimensions_and_style(tmp_path: Pat
         len(transport_buttons) * REPLAY_TRANSPORT_BUTTON_WIDTH
         + (len(transport_buttons) - 1) * REPLAY_TRANSPORT_SPACING
     )
-    assert WINDOW_SIZES["recording"][0] == REPLAY_CONTENT_WIDTH + 20
+    assert WINDOW_SIZES["recording"][0] == REPLAY_CONTENT_WIDTH + 40
 
     play_label = cast(ft.Text, view.replay_play_button.content)
     play_label.value = "Pause"
     assert view.replay_play_button.width == REPLAY_TRANSPORT_BUTTON_WIDTH
     assert view.replay_play_button.height == REPLAY_TRANSPORT_BUTTON_HEIGHT
+
+
+def test_resume_button_immediately_enters_compact_pending_layout(tmp_path: Path) -> None:
+    session, bridge = _session(tmp_path)
+    bridge.snapshot_value = ApplicationSnapshot(
+        state=ApplicationState.REPLAY,
+        replay_asset=ReplayAsset(Path("replay.mkv"), 10_000_000_000, Fraction(60, 1)),
+    )
+    asyncio.run(session.poll())
+    view, page = _view(session)
+    window = type("Window", (), {"width": 0, "height": 0})()
+    page.__dict__["window"] = window
+    view.render(session.view_state())
+
+    asyncio.run(view._switch_session_mode())
+
+    assert bridge.resume_requests == 1
+    assert (window.width, window.height) == WINDOW_SIZES["recording"]
+    assert view.state_text.value == "Resuming"
+    assert view.replay_panel.visible is False
+    assert view.mode_button.content == "Resume"
+    assert view.mode_button.disabled is True
