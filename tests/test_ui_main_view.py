@@ -82,7 +82,26 @@ def test_setup_is_ndi_only_and_compact(tmp_path: Path) -> None:
     assert view.source_dropdown.label == "NDI source"
     assert not hasattr(view, "kind_button")
     assert not hasattr(view, "backend_dropdown")
-    assert WINDOW_SIZES["setup"] == (560, 360)
+    assert WINDOW_SIZES["setup"] == (640, 320)
+    assert view.input_section in view.setup_body.controls
+    assert view.settings_row in view.setup_body.controls
+    assert view.setup_actions in view.setup_section.controls
+    assert view.setup_actions not in view.setup_body.controls
+    assert view.setup_body.expand is True
+    assert view.setup_section.expand is True
+    assert view.control.expand is True
+
+    recording, replay = (cast(ft.Column, control) for control in view.settings_row.controls)
+    assert cast(ft.Text, recording.controls[0]).value == "Recording"
+    assert cast(ft.Text, replay.controls[0]).value == "Replay"
+    assert (
+        sum(
+            child.value.startswith("Restart required")
+            for child in view.setup_body.controls
+            if isinstance(child, ft.Text)
+        )
+        == 1
+    )
 
 
 def test_apply_success_closes_dialog_and_shows_status(tmp_path: Path) -> None:

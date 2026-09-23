@@ -35,7 +35,7 @@ REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
 SESSION_WINDOW_WIDTH = 420
-SETUP_WINDOW_SIZE = (560, 360)
+SETUP_WINDOW_SIZE = (640, 320)
 RECORDING_WINDOW_HEIGHT = 120
 REPLAY_WINDOW_HEIGHT = 300
 REPLAY_CONTENT_WIDTH = 380
@@ -122,7 +122,7 @@ class MainView:
 
         self.state_text = ft.Text("", weight=ft.FontWeight.BOLD)
         self.source_dropdown = ft.Dropdown(
-            label="NDI source", options=[], width=400, on_select=self._on_source_select
+            label="NDI source", options=[], width=440, on_select=self._on_source_select
         )
         self.refresh_button = ft.FilledButton(content="Refresh", on_click=self._on_refresh)
         self.start_button = ft.FilledButton(content="Start Recording", on_click=self._on_start)
@@ -201,42 +201,61 @@ class MainView:
         # Setup settings fields (validation and persistence remain in UiSession).
         self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
         self.settings_mpv_field = ft.TextField(label="mpv executable", width=260)
-        self.settings_error_text = ft.Text("", color=ft.Colors.RED)
+        self.settings_error_text = ft.Text("", color=ft.Colors.RED, visible=False)
+        self.setup_status_text = ft.Text("", color=ft.Colors.BLUE_GREY, visible=False)
+        self.setup_error_text = ft.Text("", color=ft.Colors.RED, visible=False)
         self.settings_apply_button = ft.FilledButton(
             content="Apply", on_click=self._on_settings_apply
         )
 
         self.setup_button = ft.FilledButton(content="← Setup", on_click=self._on_setup)
-        recording_replay_section = ft.Column(
+        recording_settings = ft.Column(
             controls=[
                 ft.Text("Recording", weight=ft.FontWeight.BOLD),
                 ft.Row(controls=[self.settings_buffer_field, ft.Text("seconds")]),
-                ft.Text("Restart required after changing", italic=True),
-                ft.Divider(),
-                ft.Text("Replay", weight=ft.FontWeight.BOLD),
-                self.settings_mpv_field,
-                ft.Text("Restart required after changing", italic=True),
-                self.settings_error_text,
             ],
             spacing=6,
             tight=True,
+            expand=True,
+        )
+        replay_settings = ft.Column(
+            controls=[
+                ft.Text("Replay", weight=ft.FontWeight.BOLD),
+                self.settings_mpv_field,
+            ],
+            spacing=6,
+            tight=True,
+            expand=True,
+        )
+        self.settings_row = ft.Row(
+            controls=[recording_settings, replay_settings],
+            spacing=24,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+        self.settings_restart_note = ft.Text(
+            "Restart required after changing these settings", italic=True
         )
         self.setup_body = ft.Column(
             controls=[
                 self.input_section,
                 ft.Divider(),
-                recording_replay_section,
+                self.settings_row,
+                self.settings_restart_note,
+                self.settings_error_text,
+                self.setup_status_text,
+                self.setup_error_text,
             ],
             spacing=6,
-            tight=True,
+            expand=True,
             scroll=ft.ScrollMode.AUTO,
         )
         self.setup_actions = ft.Row(
             controls=[self.settings_apply_button, self.start_button],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            height=52,
         )
         self.setup_section = ft.Column(
-            controls=[self.setup_body, self.setup_actions], spacing=4, tight=True
+            controls=[self.setup_body, self.setup_actions], spacing=4, expand=True
         )
         self.session_section = ft.Column(
             controls=[
@@ -261,7 +280,7 @@ class MainView:
         self.control = ft.Column(
             controls=[self.setup_section, self.session_section, self.footer],
             spacing=4,
-            tight=True,
+            expand=True,
         )
         self._populate_settings_fields()
 
@@ -569,7 +588,11 @@ class MainView:
         self.status_text.visible = bool(status_message)
         self.error_text.value = state.error_message or ""
         self.error_text.visible = bool(state.error_message)
-        self.footer.visible = bool(status_message or state.error_message)
+        self.setup_status_text.value = status_message or ""
+        self.setup_status_text.visible = bool(status_message)
+        self.setup_error_text.value = state.error_message or ""
+        self.setup_error_text.visible = bool(state.error_message)
+        self.footer.visible = bool(status_message or state.error_message) and not setup_visible
 
     def _update_window_size(self, state: ApplicationState) -> None:
         if state in (ApplicationState.IDLE, ApplicationState.STARTING):
@@ -789,6 +812,7 @@ class MainView:
         self.settings_buffer_field.value = draft.buffer_duration_seconds
         self.settings_mpv_field.value = draft.mpv_executable
         self.settings_error_text.value = ""
+        self.settings_error_text.visible = False
 
     def _settings_draft(self) -> SettingsDraft:
         return SettingsDraft(
@@ -815,10 +839,13 @@ class MainView:
             # gone with the session and the draft is discarded, never applied.
             return
         if result.ok:
+            self.settings_error_text.value = ""
+            self.settings_error_text.visible = False
             self.render(self.session.view_state())
         else:
             messages = [error.message for error in result.errors]
             if result.message:
                 messages.insert(0, result.message)
             self.settings_error_text.value = "\n".join(messages)
+            self.settings_error_text.visible = bool(self.settings_error_text.value)
         self._update_page()
