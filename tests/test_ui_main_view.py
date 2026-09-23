@@ -26,7 +26,7 @@ from quickreplay.input.models import (
     NdiInputDescriptor,
 )
 from quickreplay.replay.models import ReplayAsset
-from quickreplay.ui.main_view import MainView
+from quickreplay.ui.main_view import WINDOW_SIZES, MainView
 from quickreplay.ui.session import CAMERA_KIND, UiSession
 from quickreplay.ui.settings import CAMERA_MODE_MESSAGE
 
@@ -189,4 +189,28 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert view.set_point_button.content == "Set Point"
     assert view.mode_button.content == "Resume"
     assert view.control.scroll is None
-    assert view.setup_section.scroll == ft.ScrollMode.AUTO
+    assert view.setup_body.scroll == ft.ScrollMode.AUTO
+    assert view.setup_actions in view.setup_section.controls
+    assert view.setup_actions not in view.setup_body.controls
+    header = cast(ft.Row, view.session_section.controls[0])
+    button_group = cast(ft.Row, header.controls[0])
+    assert view.mode_button in button_group.controls
+    assert view.setup_button in button_group.controls
+    assert WINDOW_SIZES["recording"][0] == WINDOW_SIZES["replay"][0]
+
+
+def test_window_size_changes_only_on_stable_session_states(tmp_path: Path) -> None:
+    session, _bridge = _session(tmp_path)
+    view, page = _view(session)
+    window = type("Window", (), {"width": 0, "height": 0})()
+    setattr(page, "wind" + "ow", window)
+
+    view._update_window_size(ApplicationState.RECORDING)
+    assert (window.width, window.height) == WINDOW_SIZES["recording"]
+    view._update_window_size(ApplicationState.PREPARING_REPLAY)
+    assert (window.width, window.height) == WINDOW_SIZES["recording"]
+
+    view._update_window_size(ApplicationState.REPLAY)
+    assert (window.width, window.height) == WINDOW_SIZES["replay"]
+    view._update_window_size(ApplicationState.RESUMING)
+    assert (window.width, window.height) == WINDOW_SIZES["replay"]

@@ -35,9 +35,15 @@ _DESTROYED_SESSION_MARKER = "destroyed session"
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
-SETUP_WINDOW_SIZE = (780, 700)
-RECORDING_WINDOW_SIZE = (680, 220)
-REPLAY_WINDOW_SIZE = (720, 430)
+SESSION_WINDOW_WIDTH = 710
+SETUP_WINDOW_SIZE = (710, 500)
+RECORDING_WINDOW_HEIGHT = 160
+REPLAY_WINDOW_HEIGHT = 320
+WINDOW_SIZES = {
+    "setup": SETUP_WINDOW_SIZE,
+    "recording": (SESSION_WINDOW_WIDTH, RECORDING_WINDOW_HEIGHT),
+    "replay": (SESSION_WINDOW_WIDTH, REPLAY_WINDOW_HEIGHT),
+}
 
 
 class ViewLifecycle(Enum):
@@ -120,7 +126,7 @@ class MainView:
             on_change=self._on_kind_change,
         )
         self.source_dropdown = ft.Dropdown(
-            label="Input", options=[], width=380, on_select=self._on_source_select
+            label="Input", options=[], width=470, on_select=self._on_source_select
         )
         self.backend_dropdown = ft.Dropdown(
             label="Backend", options=[], width=160, on_select=self._on_backend_select
@@ -213,7 +219,7 @@ class MainView:
         self.settings_numerator_field = ft.TextField(label="Numerator", width=150)
         self.settings_denominator_field = ft.TextField(label="Denominator", width=150)
         self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
-        self.settings_mpv_field = ft.TextField(label="mpv executable", width=280)
+        self.settings_mpv_field = ft.TextField(label="mpv executable", width=260)
         self.settings_error_text = ft.Text("", color=ft.Colors.RED)
         self.settings_apply_button = ft.FilledButton(
             content="Apply", on_click=self._on_settings_apply
@@ -252,19 +258,22 @@ class MainView:
             spacing=6,
             tight=True,
         )
-        self.setup_section = ft.Column(
+        self.setup_body = ft.Column(
             controls=[
                 self.input_section,
                 ft.Divider(),
                 ft.Row(controls=[camera_section, recording_replay_section], spacing=24),
-                ft.Row(
-                    controls=[self.settings_apply_button, self.start_button],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
             ],
-            spacing=8,
+            spacing=6,
             tight=True,
             scroll=ft.ScrollMode.AUTO,
+        )
+        self.setup_actions = ft.Row(
+            controls=[self.settings_apply_button, self.start_button],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+        self.setup_section = ft.Column(
+            controls=[self.setup_body, self.setup_actions], spacing=4, tight=True
         )
         self.session_section = ft.Column(
             controls=[
@@ -278,7 +287,8 @@ class MainView:
                 self.recording_section,
                 self.replay_panel,
             ],
-            spacing=10,
+            spacing=4,
+            tight=True,
         )
 
         self.status_text = ft.Text("", color=ft.Colors.BLUE_GREY)
@@ -286,7 +296,9 @@ class MainView:
 
         self.footer = ft.Column(controls=[self.status_text, self.error_text], spacing=4, tight=True)
         self.control = ft.Column(
-            controls=[self.setup_section, self.session_section, self.footer], spacing=8
+            controls=[self.setup_section, self.session_section, self.footer],
+            spacing=4,
+            tight=True,
         )
         self._populate_settings_fields()
 
@@ -559,11 +571,9 @@ class MainView:
             self._stable_session_mode = "replay"
         stable_mode = self._stable_session_mode or "recording"
         self.mode_button.content = "Resume" if stable_mode == "replay" else "Replay"
-        self.mode_button.disabled = session_disabled or (
-            state.state
-            is not (
-                ApplicationState.REPLAY if stable_mode == "replay" else ApplicationState.RECORDING
-            )
+        self.mode_button.disabled = state.state not in (
+            ApplicationState.RECORDING,
+            ApplicationState.REPLAY,
         )
         self.setup_button.disabled = state.state not in (
             ApplicationState.RECORDING,
@@ -604,22 +614,23 @@ class MainView:
 
     def _update_window_size(self, state: ApplicationState) -> None:
         if state in (ApplicationState.IDLE, ApplicationState.STARTING):
-            mode, size = "setup", SETUP_WINDOW_SIZE
+            mode = "setup"
         elif state is ApplicationState.RECORDING:
             self._stable_session_mode = "recording"
-            mode, size = "recording", RECORDING_WINDOW_SIZE
+            mode = "recording"
         elif state is ApplicationState.REPLAY:
             self._stable_session_mode = "replay"
-            mode, size = "replay", REPLAY_WINDOW_SIZE
+            mode = "replay"
         elif self._stable_session_mode == "replay":
-            mode, size = "replay", REPLAY_WINDOW_SIZE
+            mode = "replay"
         else:
-            mode, size = "recording", RECORDING_WINDOW_SIZE
+            mode = "recording"
         if mode == self._window_mode:
             return
         self._window_mode = mode
         if not hasattr(self.page, "window"):
             return
+        size = WINDOW_SIZES[mode]
         self.page.window.width, self.page.window.height = size
 
     def _render_replay(self, replay: ReplayView | None) -> None:

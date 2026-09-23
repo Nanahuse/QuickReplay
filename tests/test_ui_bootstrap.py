@@ -1,8 +1,9 @@
 """Desktop bootstrap: configuration, settings and application wiring."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+import flet as ft
 import pytest
 
 from quickreplay.application.controller import ApplicationController
@@ -10,8 +11,10 @@ from quickreplay.configuration.errors import ConfigurationParseError
 from quickreplay.configuration.models import QuickReplayConfig
 from quickreplay.configuration.store import ConfigurationStore
 from quickreplay.input.models import NdiInputConfig
+from quickreplay.ui.app import _configure_window
 from quickreplay.ui.bootstrap import bootstrap_application
 from quickreplay.ui.bridge import ApplicationUiBridge
+from quickreplay.ui.main_view import WINDOW_SIZES
 from quickreplay.ui.paths import resolve_storage_paths
 
 
@@ -66,3 +69,24 @@ def test_bootstrap_runtime_directory(tmp_path: Path) -> None:
     settings = captured[0]
     assert settings.worker is not None
     assert settings.worker.working_directory == paths.runtime_directory
+
+
+def test_initial_window_uses_setup_size_and_disables_resize() -> None:
+    class Window:
+        width = 0
+        height = 0
+        resizable = True
+        maximizable = True
+
+    class Page:
+        title = ""
+        window = Window()
+
+    page = Page()
+
+    _configure_window(cast(ft.Page, page))
+
+    assert page.title == "QuickReplay"
+    assert (page.window.width, page.window.height) == WINDOW_SIZES["setup"]
+    assert page.window.resizable is False
+    assert page.window.maximizable is False
