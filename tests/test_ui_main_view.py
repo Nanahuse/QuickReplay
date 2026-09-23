@@ -26,7 +26,13 @@ from quickreplay.input.models import (
     NdiInputDescriptor,
 )
 from quickreplay.replay.models import ReplayAsset
-from quickreplay.ui.main_view import WINDOW_SIZES, MainView
+from quickreplay.ui.main_view import (
+    REPLAY_CONTENT_WIDTH,
+    REPLAY_TRANSPORT_BUTTON_HEIGHT,
+    REPLAY_TRANSPORT_BUTTON_WIDTH,
+    WINDOW_SIZES,
+    MainView,
+)
 from quickreplay.ui.session import CAMERA_KIND, UiSession
 from quickreplay.ui.settings import CAMERA_MODE_MESSAGE
 
@@ -183,7 +189,7 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert view.replay_panel.visible is True
     assert cast(ft.Text, view.replay_back20_button.content).value == "-20f"
     assert cast(ft.Text, view.replay_back1_button.content).value == "-1f"
-    assert view.replay_play_button.content == "Play"
+    assert cast(ft.Text, view.replay_play_button.content).value == "Play"
     assert cast(ft.Text, view.replay_forward1_button.content).value == "+1f"
     assert cast(ft.Text, view.replay_forward20_button.content).value == "+20f"
     assert view.set_point_button.content == "Set Point"
@@ -214,3 +220,40 @@ def test_window_size_changes_only_on_stable_session_states(tmp_path: Path) -> No
     assert (window.width, window.height) == WINDOW_SIZES["replay"]
     view._update_window_size(ApplicationState.RESUMING)
     assert (window.width, window.height) == WINDOW_SIZES["replay"]
+
+
+def test_discovery_status_is_limited_to_input_row(tmp_path: Path) -> None:
+    session, _bridge = _session(tmp_path)
+    view, _page = _view(session)
+
+    view.render(replace(session.view_state(), discovering=True, status_message="Discovering..."))
+
+    assert view.refresh_button.content == "Discovering..."
+    assert view.refresh_button.disabled is True
+    assert view.footer.visible is False
+    assert view.status_text.visible is False
+
+
+def test_replay_transport_buttons_share_fixed_dimensions_and_style(tmp_path: Path) -> None:
+    session, _bridge = _session(tmp_path)
+    view, _page = _view(session)
+    transport_buttons = (
+        view.replay_back20_button,
+        view.replay_back1_button,
+        view.replay_play_button,
+        view.replay_forward1_button,
+        view.replay_forward20_button,
+    )
+
+    assert {button.width for button in transport_buttons} == {REPLAY_TRANSPORT_BUTTON_WIDTH}
+    assert {button.height for button in transport_buttons} == {REPLAY_TRANSPORT_BUTTON_HEIGHT}
+    assert all(
+        button.border_radius == transport_buttons[0].border_radius for button in transport_buttons
+    )
+    assert all(button.padding == transport_buttons[0].padding for button in transport_buttons)
+    assert view.replay_panel.width == REPLAY_CONTENT_WIDTH
+
+    play_label = cast(ft.Text, view.replay_play_button.content)
+    play_label.value = "Pause"
+    assert view.replay_play_button.width == REPLAY_TRANSPORT_BUTTON_WIDTH
+    assert view.replay_play_button.height == REPLAY_TRANSPORT_BUTTON_HEIGHT

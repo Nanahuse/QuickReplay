@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, auto
+from typing import cast
 
 import flet as ft
 
@@ -35,10 +36,13 @@ _DESTROYED_SESSION_MARKER = "destroyed session"
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
-SESSION_WINDOW_WIDTH = 710
+SESSION_WINDOW_WIDTH = 480
 SETUP_WINDOW_SIZE = (710, 500)
-RECORDING_WINDOW_HEIGHT = 160
-REPLAY_WINDOW_HEIGHT = 320
+RECORDING_WINDOW_HEIGHT = 120
+REPLAY_WINDOW_HEIGHT = 300
+REPLAY_CONTENT_WIDTH = 440
+REPLAY_TRANSPORT_BUTTON_WIDTH = 68
+REPLAY_TRANSPORT_BUTTON_HEIGHT = 40
 WINDOW_SIZES = {
     "setup": SETUP_WINDOW_SIZE,
     "recording": (SESSION_WINDOW_WIDTH, RECORDING_WINDOW_HEIGHT),
@@ -148,7 +152,7 @@ class MainView:
             on_change=self._on_seek_change,
             on_change_end=self._on_seek_end,
         )
-        self.replay_play_button = ft.FilledButton(content="Play", on_click=self._on_play_pause)
+        self.replay_play_button = self._transport_button("Play", self._on_play_pause)
         self.replay_back20_button, self.replay_back20_gesture = self._repeat_button(
             "-20f",
             lambda: self.session.seek_frames(-REPLAY_FAST_MOVE_FRAMES),
@@ -188,6 +192,7 @@ class MainView:
                 self.set_point_button,
             ],
             spacing=10,
+            width=REPLAY_CONTENT_WIDTH,
             visible=False,
         )
 
@@ -606,11 +611,12 @@ class MainView:
         else:
             self.recording_status_text.value = ""
 
-        self.status_text.value = state.status_message or ""
-        self.status_text.visible = bool(state.status_message)
+        status_message = None if state.discovering else state.status_message
+        self.status_text.value = status_message or ""
+        self.status_text.visible = bool(status_message)
         self.error_text.value = state.error_message or ""
         self.error_text.visible = bool(state.error_message)
-        self.footer.visible = bool(state.status_message or state.error_message)
+        self.footer.visible = bool(status_message or state.error_message)
 
     def _update_window_size(self, state: ApplicationState) -> None:
         if state in (ApplicationState.IDLE, ApplicationState.STARTING):
@@ -653,22 +659,38 @@ class MainView:
         duration_seconds = replay.duration_ns / _NANOSECONDS_PER_SECOND
         self.replay_slider.disabled = duration_seconds <= 0 or self._replay_repeat_active
         self.replay_fps_text.value = f"{replay.fps_text} fps"
-        self.replay_play_button.content = "Play" if replay.paused else "Pause"
+        cast(ft.Text, self.replay_play_button.content).value = "Play" if replay.paused else "Pause"
         self.replay_play_button.disabled = self._replay_repeat_active
         self.set_point_button.disabled = self._replay_repeat_active
         self.set_point_text.value = replay.set_point_text
         self.time_difference_text.value = replay.time_difference_text
         self.frame_difference_text.value = replay.frame_difference_text
 
+    def _transport_button(
+        self,
+        label: str,
+        on_click: Callable[[ft.Event], None] | None = None,
+    ) -> ft.Container:
+        return ft.Container(
+            content=ft.Text(
+                label,
+                color=ft.Colors.ON_PRIMARY,
+                size=14,
+                text_align=ft.TextAlign.CENTER,
+            ),
+            width=REPLAY_TRANSPORT_BUTTON_WIDTH,
+            height=REPLAY_TRANSPORT_BUTTON_HEIGHT,
+            alignment=ft.Alignment.CENTER,
+            bgcolor=ft.Colors.PRIMARY,
+            padding=0,
+            border_radius=ft.BorderRadius(top_left=4, top_right=4, bottom_left=4, bottom_right=4),
+            on_click=on_click,
+        )
+
     def _repeat_button(
         self, label: str, action: Callable[[], Awaitable[None]], interval: float
     ) -> tuple[ft.Container, ft.GestureDetector]:
-        button = ft.Container(
-            content=ft.Text(label, color=ft.Colors.ON_PRIMARY),
-            bgcolor=ft.Colors.PRIMARY,
-            padding=ft.Padding(left=16, right=16, top=10, bottom=10),
-            border_radius=ft.BorderRadius(top_left=4, top_right=4, bottom_left=4, bottom_right=4),
-        )
+        button = self._transport_button(label)
         gesture = ft.GestureDetector(
             content=button,
             on_tap=lambda _event: self._run_task(self._run_replay_action_async, action),
