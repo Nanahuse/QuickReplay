@@ -115,7 +115,7 @@ def fake_video(
     pixel_format: str = "UYVY",
 ) -> RawVideo:
     if stride is None:
-        stride = width * 2
+        stride = width * (4 if pixel_format.upper() == "BGRA" else 2)
     if data is None:
         data = np.arange(height * stride, dtype=np.uint8).reshape(height, stride)
     return RawVideo(

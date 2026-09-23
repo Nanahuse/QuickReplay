@@ -13,16 +13,21 @@ from quickreplay.input.ndi.errors import NdiUnsupportedFormatError
 
 
 def to_video_frame(raw: RawVideo) -> VideoFrame:
-    """Copy a raw UYVY frame into an owned domain video frame."""
-    if raw.pixel_format.upper() != "UYVY":
+    """Copy a raw UYVY or BGRA frame into an owned domain video frame."""
+    pixel_format = raw.pixel_format.upper()
+    if pixel_format == "UYVY":
+        data = _uyvy_payload(raw)
+    elif pixel_format == "BGRA":
+        data = _bgra_payload(raw)
+    else:
         raise NdiUnsupportedFormatError(f"unsupported NDI video format {raw.pixel_format!r}")
     return VideoFrame(
         timestamp_ns=raw.timestamp_ns,
         width=raw.width,
         height=raw.height,
         fps=raw.fps,
-        pixel_format="UYVY",
-        data=_uyvy_payload(raw),
+        pixel_format=pixel_format,
+        data=data,
     )
 
 
@@ -61,6 +66,44 @@ def _uyvy_payload(raw: RawVideo) -> np.ndarray:
             f"NDI UYVY frame {array.shape} is not compatible with {raw.width}x{raw.height}"
         )
     return np.array(rows[:, :row_bytes], dtype=np.uint8, copy=True)
+
+
+def _bgra_payload(raw: RawVideo) -> np.ndarray:
+    """Return an owned contiguous ``(height, width, 4)`` uint8 copy."""
+    row_bytes = raw.width * 4
+    if raw.width <= 0 or raw.height <= 0 or raw.line_stride < row_bytes:
+        raise NdiUnsupportedFormatError(
+            f"NDI BGRA frame {raw.width}x{raw.height} has invalid line stride "
+            f"{raw.line_stride} (need at least {row_bytes})"
+        )
+    array = np.asarray(raw.data)
+    if array.ndim == 0:
+        raise NdiUnsupportedFormatError("the NDI video frame carries no data")
+    if array.dtype != np.uint8:
+        raise NdiUnsupportedFormatError(
+            f"NDI BGRA buffer must contain uint8 bytes, got {array.dtype}"
+        )
+    if array.ndim == 1:
+        required_bytes = raw.height * raw.line_stride
+        if array.size < required_bytes:
+            raise NdiUnsupportedFormatError(
+                f"NDI BGRA buffer of {array.size} bytes is too small for "
+                f"{raw.height} rows with stride {raw.line_stride}"
+            )
+        rows = array[:required_bytes].reshape(raw.height, raw.line_stride)
+    elif array.ndim == 2:
+        rows = array
+        if rows.shape[0] != raw.height or rows.shape[1] < raw.line_stride:
+            raise NdiUnsupportedFormatError(
+                f"NDI BGRA frame {array.shape} is not compatible with "
+                f"{raw.width}x{raw.height} and stride {raw.line_stride}"
+            )
+    else:
+        raise NdiUnsupportedFormatError(
+            f"NDI BGRA frame must be a byte buffer or row matrix; got shape {array.shape}"
+        )
+    pixels = rows[:, :row_bytes].reshape(raw.height, raw.width, 4)
+    return np.array(pixels, dtype=np.uint8, copy=True, order="C")
 
 
 def _audio_payload(raw: RawAudio) -> np.ndarray:

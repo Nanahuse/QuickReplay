@@ -89,9 +89,58 @@ def test_audio_unsupported_channel_count() -> None:
         to_audio_frame(fake_audio(channels=3, samples=100))
 
 
+def test_bgra_frame_is_copied_without_padding() -> None:
+    width, height = 2, 2
+    native = np.arange(height * width * 4, dtype=np.uint8).reshape(height, width * 4)
+    raw = fake_video(width=width, height=height, pixel_format="BGRA", data=native)
+
+    frame = to_video_frame(raw)
+
+    assert frame.pixel_format == "BGRA"
+    payload = _payload(frame)
+    assert payload.shape == (height, width, 4)
+    assert payload.dtype == np.uint8
+    assert np.array_equal(payload, native.reshape(height, width, 4))
+    assert payload.flags.c_contiguous
+    assert not np.shares_memory(payload, native)
+
+
+def test_bgra_padding_is_removed_and_payload_is_owned() -> None:
+    width, height, stride = 2, 2, 12
+    native = np.arange(height * stride, dtype=np.uint8).reshape(height, stride)
+    raw = fake_video(width=width, height=height, stride=stride, data=native, pixel_format="BGRA")
+    expected = native[:, : width * 4].copy()
+
+    frame = to_video_frame(raw)
+    native[:] = 255
+
+    payload = _payload(frame)
+    assert payload.shape == (height, width, 4)
+    assert np.array_equal(payload.reshape(height, width * 4), expected)
+    assert not np.shares_memory(payload, native)
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "stride", "data"),
+    [
+        (2, 2, 8, np.zeros((1, 8), dtype=np.uint8)),
+        (2, 2, 7, np.zeros((2, 8), dtype=np.uint8)),
+        (2, 2, 8, np.zeros(15, dtype=np.uint8)),
+        (2, 2, 8, np.asarray(1, dtype=np.uint8)),
+    ],
+)
+def test_malformed_bgra_frames_are_rejected(
+    width: int, height: int, stride: int, data: np.ndarray
+) -> None:
+    raw = fake_video(width=width, height=height, stride=stride, data=data, pixel_format="BGRA")
+
+    with pytest.raises(NdiUnsupportedFormatError):
+        to_video_frame(raw)
+
+
 def test_unsupported_video_format_rejected() -> None:
     with pytest.raises(NdiUnsupportedFormatError):
-        to_video_frame(fake_video(pixel_format="BGRA"))
+        to_video_frame(fake_video(pixel_format="P216"))
 
 
 def test_unsupported_audio_format_rejected() -> None:
