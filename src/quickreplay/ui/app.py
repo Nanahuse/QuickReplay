@@ -14,7 +14,11 @@ import multiprocessing
 import flet as ft
 
 from quickreplay.ui.bootstrap import bootstrap_application
-from quickreplay.ui.main_view import MainView, is_destroyed_session_error
+from quickreplay.ui.main_view import (
+    WINDOW_SIZES,
+    MainView,
+    is_destroyed_session_error,
+)
 from quickreplay.ui.paths import StoragePathError, storage_paths_from_environment
 from quickreplay.ui.session import UiSession
 
@@ -40,11 +44,17 @@ def _show_startup_error(page: ft.Page, message: str) -> None:
             raise
 
 
+def _configure_window(page: ft.Page) -> None:
+    """Apply the fixed-size desktop window policy before the first render."""
+    page.title = "QuickReplay"
+    page.window.width, page.window.height = WINDOW_SIZES["setup"]
+    page.window.resizable = False
+    page.window.maximizable = False
+
+
 async def main(page: ft.Page) -> None:
     """Flet entry point."""
-    page.title = "QuickReplay"
-    page.window.width = 900
-    page.window.height = 720
+    _configure_window(page)
 
     try:
         paths = storage_paths_from_environment()

@@ -117,6 +117,9 @@ class MetricsView:
     buffer_fraction: float
     segments: str
     drops: str
+    video_drops: int
+    audio_drops: int
+    has_drops: bool
 
 
 def metrics_view(
@@ -132,6 +135,9 @@ def metrics_view(
         buffer_fraction=buffer_fraction(metrics.buffer_duration_ns, buffer_max_seconds),
         segments=str(metrics.segment_count),
         drops=f"Video {metrics.video_queue_drops} / Audio {metrics.audio_queue_drops}",
+        video_drops=metrics.video_queue_drops,
+        audio_drops=metrics.audio_queue_drops,
+        has_drops=metrics.video_queue_drops > 0 or metrics.audio_queue_drops > 0,
     )
 
 
