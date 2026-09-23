@@ -141,7 +141,15 @@ def test_video_format_change_is_rejected() -> None:
 def test_bgra_video_and_audio_are_exposed_in_stream_info() -> None:
     backend = FakeBackend(
         sources=("My Source",),
-        script=[fake_video(width=8, height=4, pixel_format="BGRA"), fake_audio()],
+        script=[
+            fake_video(
+                width=8,
+                height=4,
+                pixel_format="BGRA",
+                data=np.zeros((4, 8, 4), dtype=np.uint8),
+            ),
+            fake_audio(),
+        ],
     )
     source = _source(backend)
     source.open()
