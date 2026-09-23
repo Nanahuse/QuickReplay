@@ -30,6 +30,7 @@ from quickreplay.ui.main_view import (
     REPLAY_CONTENT_WIDTH,
     REPLAY_TRANSPORT_BUTTON_HEIGHT,
     REPLAY_TRANSPORT_BUTTON_WIDTH,
+    REPLAY_TRANSPORT_SPACING,
     WINDOW_SIZES,
     MainView,
 )
@@ -252,6 +253,12 @@ def test_replay_transport_buttons_share_fixed_dimensions_and_style(tmp_path: Pat
     )
     assert all(button.padding == transport_buttons[0].padding for button in transport_buttons)
     assert view.replay_panel.width == REPLAY_CONTENT_WIDTH
+    assert cast(ft.Row, view.replay_panel.controls[2]).spacing == REPLAY_TRANSPORT_SPACING
+    assert REPLAY_CONTENT_WIDTH == (
+        len(transport_buttons) * REPLAY_TRANSPORT_BUTTON_WIDTH
+        + (len(transport_buttons) - 1) * REPLAY_TRANSPORT_SPACING
+    )
+    assert WINDOW_SIZES["recording"][0] == REPLAY_CONTENT_WIDTH + 20
 
     play_label = cast(ft.Text, view.replay_play_button.content)
     play_label.value = "Pause"

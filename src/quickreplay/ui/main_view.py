@@ -36,13 +36,14 @@ _DESTROYED_SESSION_MARKER = "destroyed session"
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
-SESSION_WINDOW_WIDTH = 480
+SESSION_WINDOW_WIDTH = 400
 SETUP_WINDOW_SIZE = (710, 500)
 RECORDING_WINDOW_HEIGHT = 120
 REPLAY_WINDOW_HEIGHT = 300
-REPLAY_CONTENT_WIDTH = 440
+REPLAY_CONTENT_WIDTH = 380
 REPLAY_TRANSPORT_BUTTON_WIDTH = 68
 REPLAY_TRANSPORT_BUTTON_HEIGHT = 40
+REPLAY_TRANSPORT_SPACING = 10
 WINDOW_SIZES = {
     "setup": SETUP_WINDOW_SIZE,
     "recording": (SESSION_WINDOW_WIDTH, RECORDING_WINDOW_HEIGHT),
@@ -184,7 +185,8 @@ class MainView:
                         self.replay_play_button,
                         self.replay_forward1_gesture,
                         self.replay_forward20_gesture,
-                    ]
+                    ],
+                    spacing=REPLAY_TRANSPORT_SPACING,
                 ),
                 ft.Row(
                     controls=[self.time_difference_text, ft.Text("·"), self.frame_difference_text]
