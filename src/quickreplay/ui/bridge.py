@@ -27,7 +27,7 @@ class ControllerLike(Protocol):
 
     def start_recording(self, input_config: InputConfig) -> None: ...
 
-    def discover_inputs(self, *, camera_backend: str = "any") -> UUID: ...
+    def discover_inputs(self) -> UUID: ...
 
     def request_replay(self) -> UUID: ...
 
@@ -91,8 +91,8 @@ class ApplicationUiBridge:
     async def start_recording(self, input_config: InputConfig) -> None:
         await self._run(self._controller.start_recording, input_config)
 
-    async def discover_inputs(self, *, camera_backend: str = "any") -> UUID:
-        return await self._run(self._controller.discover_inputs, camera_backend=camera_backend)
+    async def discover_inputs(self) -> UUID:
+        return await self._run(self._controller.discover_inputs)
 
     async def request_replay(self) -> UUID:
         return await self._run(self._controller.request_replay)

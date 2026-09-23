@@ -1,4 +1,4 @@
-"""Backend-aware discovery: command forwarding and worker execution."""
+"""NDI discovery command forwarding and worker execution."""
 
 from pathlib import Path
 from uuid import uuid4
@@ -14,7 +14,7 @@ from quickreplay.recording.models import WorkerState
 from quickreplay.worker.settings import RecorderWorkerSettings
 
 
-def test_application_controller_forwards_camera_backend() -> None:
+def test_application_controller_sends_discovery_request() -> None:
     worker = FakeWorker()
     app = ApplicationController(
         ApplicationControllerSettings(),
@@ -23,20 +23,17 @@ def test_application_controller_forwards_camera_backend() -> None:
     )
     app.start()
     app.poll()
+    request_id = app.discover_inputs()
 
-    app.discover_inputs(camera_backend="dshow")
-    app.discover_inputs()
-
-    commands = worker.commands_of(DiscoverInputs)
-    assert commands[0].camera_backend == "dshow"
-    assert commands[1].camera_backend == "any"
+    command = worker.commands_of(DiscoverInputs)[0]
+    assert command.request_id == request_id
 
 
-def test_worker_discovery_uses_camera_backend(tmp_path: Path) -> None:
-    seen: list[str] = []
+def test_worker_discovery_callback_has_no_arguments(tmp_path: Path) -> None:
+    calls: list[bool] = []
 
-    def discovery(*, camera_backend: str = "any") -> tuple:
-        seen.append(camera_backend)
+    def discovery() -> tuple:
+        calls.append(True)
         return ()
 
     settings = RecorderWorkerSettings(working_directory=tmp_path, metrics_interval_ns=20_000_000)
@@ -44,15 +41,9 @@ def test_worker_discovery_uses_camera_backend(tmp_path: Path) -> None:
     try:
         harness.start()
         harness.wait_state(WorkerState.IDLE)
-
         request_id = uuid4()
-        harness.send(DiscoverInputs(request_id, camera_backend="dshow"))
+        harness.send(DiscoverInputs(request_id))
         harness.wait_event(InputsDiscovered, predicate=lambda event: event.request_id == request_id)
-
-        default_id = uuid4()
-        harness.send(DiscoverInputs(default_id))
-        harness.wait_event(InputsDiscovered, predicate=lambda event: event.request_id == default_id)
-
-        assert seen == ["dshow", "any"]
+        assert calls == [True]
     finally:
         harness.shutdown()

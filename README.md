@@ -1,28 +1,26 @@
 # QuickReplay
 
 QuickReplay Version 2 is a Windows desktop instant replay application for NDI
-and camera inputs.
+inputs.
 
 Version 2 is a rewrite of QuickReplay.  The previous Version 1 implementation
 has been removed from this repository.  The core domain model, the segment
 recording core, the ring storage / retention core, the replay asset
-(stream-copy remux) core, the NDI input core, the camera input core and the
+(stream-copy remux) core, the NDI input core and the
 headless recorder worker (separate process, capture/encode threads, bounded
 queues, replay preparation) and the mpv-based replay controller (external mpv
 process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
 headless application controller orchestrates recording, replay preparation, mpv
 playback and recording resume.  Configuration persistence (versioned JSON
-schema v1, NDI/Camera input selection, recorder buffer setting, mpv executable
+schema v1, NDI input selection, recorder buffer setting, mpv executable
 setting, atomic save) is implemented.  A Flet 1.0 desktop UI is implemented:
-input discovery and selection, camera backend selection, recording state,
+NDI input discovery and selection, recording state,
 stream information and metrics, replay preparation, and the replay control UI
 (Play/Pause, ±1 and ±20 frame steps, seek bar, Set Point, time and frame
 difference, resume).  A settings editor (explicit Apply/Cancel) edits the
-persisted configuration: the selected camera capture mode (width, height and an
-exact fractional FPS), the recording buffer duration and the mpv executable.
-A camera mode change is used by the next recording session; buffer duration and
-mpv executable changes are saved but need an application restart to take
-effect.
+persisted configuration: the recording buffer duration and the mpv executable.
+Buffer duration and mpv executable changes are saved but need an application
+restart to take effect.
 
 ## Requirements
 
@@ -104,8 +102,7 @@ src/
    ├─ application/  # headless application controller (recording/replay lifecycle)
    ├─ configuration/# versioned JSON configuration persistence
    ├─ input/        # input config, stream info, frame models, InputSource
-   │  ├─ ndi/       # NDI discovery, receiver and frame conversion
-   │  └─ camera/    # camera discovery, OpenCV capture and frame conversion
+   │  └─ ndi/       # NDI discovery, receiver and frame conversion
    ├─ recording/    # segment/session models, segment recorder, worker protocol
    ├─ replay/       # replay models, asset builder, remux and mpv controller
    ├─ worker/       # recorder worker process, pipeline and frame queues

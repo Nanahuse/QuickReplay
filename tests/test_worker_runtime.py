@@ -14,7 +14,6 @@ from fake_worker_input import (
 )
 
 from quickreplay.input.models import (
-    CameraInputConfig,
     NdiInputConfig,
     NdiInputDescriptor,
     StreamInfo,
@@ -223,7 +222,7 @@ def test_change_input_starts_a_new_session(tmp_path: Path) -> None:
         _start(harness)
         _wait_captured(harness, factory)
         request_id = uuid4()
-        harness.send(ChangeInput(request_id, CameraInputConfig("cam", 0, "any")))
+        harness.send(ChangeInput(request_id, NdiInputConfig("cam")))
         harness.wait_state(WorkerState.STOPPING)
         harness.wait_state(WorkerState.RECORDING)
         started = harness.wait_event(

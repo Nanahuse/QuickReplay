@@ -25,7 +25,6 @@ from quickreplay.application.events import (
 from quickreplay.application.models import ApplicationControllerSettings
 from quickreplay.input.models import (
     AudioStreamInfo,
-    CameraInputConfig,
     NdiInputConfig,
     NdiInputDescriptor,
     StreamInfo,
@@ -348,7 +347,7 @@ def test_change_input() -> None:
     app = _to_recording(worker, request_id_factory=SequenceRequestIds(change_id))
     new_info = _info()
 
-    returned = app.change_input(CameraInputConfig("cam", 0, "any"))
+    returned = app.change_input(NdiInputConfig("cam"))
 
     assert returned == change_id
     assert app.state == ApplicationState.STARTING
@@ -367,7 +366,7 @@ def test_stale_change_input_response_does_not_override() -> None:
     worker = FakeWorker()
     app = _to_recording(worker, request_id_factory=SequenceRequestIds(change_id))
     original = app.snapshot().stream_info
-    app.change_input(CameraInputConfig("cam", 0, "any"))
+    app.change_input(NdiInputConfig("cam"))
 
     worker.push(StreamStarted(stream_info=_info(), request_id=uuid4()))
     app.poll()
@@ -585,7 +584,7 @@ def test_invalid_operations_are_rejected() -> None:
     worker.push(ReplayPrepared(request_id=replay_id, asset=_asset()))
     app.poll()
     with pytest.raises(InvalidApplicationStateError):
-        app.change_input(CameraInputConfig("cam", 0, "any"))
+        app.change_input(NdiInputConfig("cam"))
 
     app.resume_recording()
     with pytest.raises(InvalidApplicationStateError):

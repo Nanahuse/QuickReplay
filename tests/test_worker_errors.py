@@ -2,13 +2,6 @@
 
 import errno
 
-from quickreplay.input.camera.errors import (
-    CameraBackendError,
-    CameraCaptureError,
-    CameraFormatError,
-    CameraNotFoundError,
-    CameraOpenError,
-)
 from quickreplay.input.ndi.errors import (
     NdiCaptureError,
     NdiFormatChangeError,
@@ -35,25 +28,20 @@ from quickreplay.worker.errors import (
 
 def test_source_not_found() -> None:
     assert map_worker_error(NdiSourceNotFoundError("x")) == WorkerErrorCode.INPUT_NOT_FOUND
-    assert map_worker_error(CameraNotFoundError("x")) == WorkerErrorCode.INPUT_NOT_FOUND
 
 
 def test_open_failures() -> None:
     assert map_worker_error(NdiInitializationError("x")) == WorkerErrorCode.INPUT_OPEN_FAILED
-    assert map_worker_error(CameraOpenError("x")) == WorkerErrorCode.INPUT_OPEN_FAILED
-    assert map_worker_error(CameraBackendError("x")) == WorkerErrorCode.INPUT_OPEN_FAILED
 
 
 def test_disconnect_and_capture() -> None:
     assert map_worker_error(NdiCaptureError("x")) == WorkerErrorCode.INPUT_DISCONNECTED
     assert map_worker_error(PipelineStartupError("x")) == WorkerErrorCode.INPUT_DISCONNECTED
-    assert map_worker_error(CameraCaptureError("x")) == WorkerErrorCode.CAPTURE_FAILED
 
 
 def test_format_errors() -> None:
     assert map_worker_error(NdiUnsupportedFormatError("x")) == WorkerErrorCode.UNSUPPORTED_FORMAT
     assert map_worker_error(NdiFormatChangeError("x")) == WorkerErrorCode.UNSUPPORTED_FORMAT
-    assert map_worker_error(CameraFormatError("x")) == WorkerErrorCode.UNSUPPORTED_FORMAT
     assert map_worker_error(SegmentFormatError("x")) == WorkerErrorCode.UNSUPPORTED_FORMAT
     assert map_worker_error(PipelineFormatChangeError("x")) == WorkerErrorCode.UNSUPPORTED_FORMAT
 

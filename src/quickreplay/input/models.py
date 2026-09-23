@@ -10,23 +10,6 @@ from fractions import Fraction
 
 
 @dataclass(frozen=True, slots=True)
-class CameraMode:
-    """A requested camera capture mode."""
-
-    width: int
-    height: int
-    fps: Fraction
-
-    def __post_init__(self) -> None:
-        if self.width <= 0:
-            raise ValueError(f"width must be positive, got {self.width}")
-        if self.height <= 0:
-            raise ValueError(f"height must be positive, got {self.height}")
-        if self.fps <= 0:
-            raise ValueError(f"fps must be positive, got {self.fps}")
-
-
-@dataclass(frozen=True, slots=True)
 class NdiInputConfig:
     """NDI input identified by its advertised source name."""
 
@@ -37,25 +20,7 @@ class NdiInputConfig:
             raise ValueError("source_name must not be empty")
 
 
-@dataclass(frozen=True, slots=True)
-class CameraInputConfig:
-    """Camera input identified by device name / index."""
-
-    device_name: str
-    device_index: int
-    backend: str
-    mode: CameraMode | None = None
-
-    def __post_init__(self) -> None:
-        if not self.device_name:
-            raise ValueError("device_name must not be empty")
-        if self.device_index < 0:
-            raise ValueError(f"device_index must not be negative, got {self.device_index}")
-        if not self.backend:
-            raise ValueError("backend must not be empty")
-
-
-type InputConfig = NdiInputConfig | CameraInputConfig
+type InputConfig = NdiInputConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +59,7 @@ class AudioStreamInfo:
 class StreamInfo:
     """Declared stream format of an input.
 
-    ``audio`` is ``None`` for inputs without audio (for example a Camera).
+    ``audio`` is ``None`` when the active stream has no audio.
     """
 
     video: VideoStreamInfo
@@ -154,12 +119,4 @@ class NdiInputDescriptor:
     source_name: str
 
 
-@dataclass(frozen=True, slots=True)
-class CameraInputDescriptor:
-    """A discoverable camera, safe to send over IPC."""
-
-    device_name: str
-    device_index: int
-
-
-type InputDescriptor = NdiInputDescriptor | CameraInputDescriptor
+type InputDescriptor = NdiInputDescriptor

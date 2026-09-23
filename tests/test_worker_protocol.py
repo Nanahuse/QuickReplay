@@ -9,9 +9,6 @@ import pytest
 
 from quickreplay.input.models import (
     AudioStreamInfo,
-    CameraInputConfig,
-    CameraInputDescriptor,
-    CameraMode,
     NdiInputConfig,
     NdiInputDescriptor,
     StreamInfo,
@@ -65,22 +62,13 @@ def _metrics() -> RecordingMetrics:
     )
 
 
-def _camera_config() -> CameraInputConfig:
-    return CameraInputConfig(
-        device_name="USB Camera",
-        device_index=0,
-        backend="msmf",
-        mode=CameraMode(1280, 720, Fraction(30, 1)),
-    )
-
-
 def _commands() -> list[WorkerCommand]:
     request_id = uuid4()
     return [
         StartRecording(input_config=NdiInputConfig("PC-A (OBS)")),
         PrepareReplay(request_id=request_id),
         ResumeRecording(request_id=request_id),
-        ChangeInput(request_id=request_id, input_config=_camera_config()),
+        ChangeInput(request_id=request_id, input_config=NdiInputConfig("PC-B (OBS)")),
         DiscoverInputs(request_id=request_id),
         Shutdown(),
     ]
@@ -92,10 +80,7 @@ def _events() -> list[WorkerEvent]:
         WorkerStateChanged(state=WorkerState.RECORDING),
         InputsDiscovered(
             request_id=request_id,
-            inputs=(
-                NdiInputDescriptor("PC-A (OBS)"),
-                CameraInputDescriptor("USB Camera", 0),
-            ),
+            inputs=(NdiInputDescriptor("PC-A (OBS)"),),
         ),
         StreamStarted(stream_info=_stream_info()),
         RecordingMetricsUpdated(metrics=_metrics()),

@@ -79,7 +79,7 @@ class FrameQueues:
         """Return the oldest ready frame, or ``None`` if none may be emitted yet.
 
         ``expect_audio`` disables the hold-back for video-only sources so a
-        camera never pays an A/V latency.  When draining, everything is emitted
+        Video-only input never pays an A/V latency. When draining, everything is emitted
         immediately.
         """
         with self._ready:

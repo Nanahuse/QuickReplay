@@ -23,14 +23,6 @@ https://github.com/PyAV-Org/PyAV/blob/main/LICENSE.txt
 BSD 3-Clause License<br>
 https://github.com/numpy/numpy/blob/main/LICENSE.txt
 
-## OpenCV / opencv-python
-
-Apache License 2.0 (OpenCV)<br>
-https://github.com/opencv/opencv/blob/4.x/LICENSE
-
-MIT License (opencv-python packaging)<br>
-https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt
-
 ## ndi-python
 
 MIT License<br>

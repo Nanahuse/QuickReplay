@@ -7,8 +7,6 @@ import pytest
 from quickreplay.input.models import (
     AudioFrame,
     AudioStreamInfo,
-    CameraInputConfig,
-    CameraMode,
     NdiInputConfig,
     VideoStreamInfo,
 )
@@ -19,18 +17,6 @@ def test_ndi_input_config() -> None:
     assert config.source_name == "PC-A (OBS)"
     with pytest.raises(ValueError):
         NdiInputConfig(source_name="")
-
-
-def test_camera_input_config() -> None:
-    mode = CameraMode(width=1920, height=1080, fps=Fraction(60, 1))
-    config = CameraInputConfig(device_name="USB Camera", device_index=0, backend="msmf", mode=mode)
-    assert config.mode is mode
-    assert config.device_index == 0
-
-    without_mode = CameraInputConfig(device_name="Cam", device_index=1, backend="dshow")
-    assert without_mode.mode is None
-    with pytest.raises(ValueError):
-        CameraInputConfig(device_name="Cam", device_index=-1, backend="dshow")
 
 
 def test_fps_is_fraction_not_float() -> None:

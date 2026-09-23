@@ -18,7 +18,7 @@ def test_calls_are_serialized_on_one_thread() -> None:
         await asyncio.gather(
             bridge.start(),
             bridge.poll(),
-            bridge.discover_inputs(camera_backend="dshow"),
+            bridge.discover_inputs(),
             bridge.request_replay(),
             bridge.resume_recording(),
             bridge.snapshot(),
