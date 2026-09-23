@@ -353,8 +353,7 @@ def test_actions_after_close_do_not_call_core(tmp_path: Path) -> None:
 
         view._on_start(_event())
         view._on_refresh(_event())
-        view._on_replay(_event())
-        view._on_resume(_event())
+        view._on_mode_button(_event())
         view._run_replay_action("step_forward")
         view._on_settings_apply(_event())
         view._on_source_select(_event())

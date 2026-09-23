@@ -187,5 +187,6 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert cast(ft.Text, view.replay_forward1_button.content).value == "+1f"
     assert cast(ft.Text, view.replay_forward20_button.content).value == "+20f"
     assert view.set_point_button.content == "Set Point"
-    assert view.resume_button.content == "Resume"
-    assert view.control.scroll == ft.ScrollMode.AUTO
+    assert view.mode_button.content == "Resume"
+    assert view.control.scroll is None
+    assert view.setup_section.scroll == ft.ScrollMode.AUTO
