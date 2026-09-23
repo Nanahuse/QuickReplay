@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 
+import numpy as np
 import pytest
 from fake_ndi import FakeBackend, fake_audio, fake_metadata, fake_video
 
@@ -131,6 +132,50 @@ def test_video_format_change_is_rejected() -> None:
     source.open()
     try:
         source.read()
+        with pytest.raises(NdiFormatChangeError):
+            source.read()
+    finally:
+        source.close()
+
+
+def test_bgra_video_and_audio_are_exposed_in_stream_info() -> None:
+    backend = FakeBackend(
+        sources=("My Source",),
+        script=[fake_video(width=8, height=4, pixel_format="BGRA"), fake_audio()],
+    )
+    source = _source(backend)
+    source.open()
+    try:
+        video = source.read()
+        assert isinstance(video, VideoFrame)
+        assert video.pixel_format == "BGRA"
+        assert isinstance(video.data, np.ndarray)
+        assert video.data.shape == (4, 8, 4)
+        assert source.stream_info is not None
+        assert source.stream_info.video.pixel_format == "BGRA"
+
+        audio = source.read()
+        assert isinstance(audio, AudioFrame)
+        assert source.stream_info.audio is not None
+        assert source.stream_info.audio.channels == 2
+    finally:
+        source.close()
+
+
+def test_bgra_frames_are_accepted_but_mid_session_format_change_is_rejected() -> None:
+    backend = FakeBackend(
+        sources=("My Source",),
+        script=[
+            fake_video(width=8, height=4, pixel_format="BGRA"),
+            fake_video(width=8, height=4, pixel_format="BGRA", timestamp_ns=1),
+            fake_video(width=8, height=4, pixel_format="UYVY", timestamp_ns=2),
+        ],
+    )
+    source = _source(backend)
+    source.open()
+    try:
+        assert isinstance(source.read(), VideoFrame)
+        assert isinstance(source.read(), VideoFrame)
         with pytest.raises(NdiFormatChangeError):
             source.read()
     finally:

@@ -49,3 +49,19 @@ def test_existing_pixel_formats_still_work() -> None:
 
     assert av_frame.format.name == "yuv420p"
     assert (av_frame.width, av_frame.height) == (4, 2)
+
+
+def test_bgra_converts_to_yuv420p() -> None:
+    frame = VideoFrame(
+        0,
+        4,
+        2,
+        Fraction(60, 1),
+        "BGRA",
+        np.zeros((2, 4, 4), dtype=np.uint8),
+    )
+
+    av_frame = FrameConverter().to_av_video(frame)
+
+    assert av_frame.format.name == "yuv420p"
+    assert (av_frame.width, av_frame.height) == (4, 2)

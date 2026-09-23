@@ -220,16 +220,21 @@ class PyNdiReceiver:
         if timestamp == int(ndi.RECV_TIMESTAMP_UNDEFINED):
             ndi.recv_free_video_v2(self._receiver, video)
             raise NdiCaptureError("the NDI video frame has no timestamp")
-        if int(video.FourCC) != int(ndi.FOURCC_VIDEO_TYPE_UYVY):
+        fourcc = int(video.FourCC)
+        if fourcc == int(ndi.FOURCC_VIDEO_TYPE_UYVY):
+            pixel_format = "UYVY"
+        elif fourcc == int(ndi.FOURCC_VIDEO_TYPE_BGRA):
+            pixel_format = "BGRA"
+        else:
             ndi.recv_free_video_v2(self._receiver, video)
             raise NdiUnsupportedFormatError(
-                f"unsupported NDI video format {video.FourCC!r}; expected UYVY"
+                f"unsupported NDI video format {video.FourCC!r}; supported: UYVY, BGRA"
             )
         return RawVideo(
             width=int(video.xres),
             height=int(video.yres),
             line_stride=int(video.line_stride_in_bytes),
-            pixel_format="UYVY",
+            pixel_format=pixel_format,
             fps=Fraction(int(video.frame_rate_N), int(video.frame_rate_D)),
             timestamp_ns=ndi_timestamp_to_ns(timestamp),
             data=np.asarray(video.data),
