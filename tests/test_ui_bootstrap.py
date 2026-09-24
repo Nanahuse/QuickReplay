@@ -11,7 +11,7 @@ from quickreplay.configuration.errors import ConfigurationParseError
 from quickreplay.configuration.models import QuickReplayConfig
 from quickreplay.configuration.store import ConfigurationStore
 from quickreplay.input.models import NdiInputConfig
-from quickreplay.ui.app import _configure_window
+from quickreplay.ui.app import _configure_window, _show_startup_error, run
 from quickreplay.ui.bootstrap import bootstrap_application
 from quickreplay.ui.bridge import ApplicationUiBridge
 from quickreplay.ui.main_view import WINDOW_SIZES
@@ -75,6 +75,7 @@ def test_initial_window_uses_setup_size_and_disables_resize() -> None:
     class Window:
         width = 0
         height = 0
+        visible = True
         resizable = True
         maximizable = True
 
@@ -88,5 +89,47 @@ def test_initial_window_uses_setup_size_and_disables_resize() -> None:
 
     assert page.title == "QuickReplay"
     assert (page.window.width, page.window.height) == WINDOW_SIZES["setup"]
+    assert page.window.visible is False
     assert page.window.resizable is False
     assert page.window.maximizable is False
+
+
+def test_startup_error_shows_window_at_configured_size() -> None:
+    class Window:
+        width = WINDOW_SIZES["setup"][0]
+        height = WINDOW_SIZES["setup"][1]
+        visible = False
+
+    class Page:
+        window = Window()
+        controls: list[ft.Control] = []
+        updates = 0
+
+        def add(self, control: ft.Control) -> None:
+            self.controls.append(control)
+
+        def update(self) -> None:
+            self.updates += 1
+
+    page = Page()
+
+    _show_startup_error(cast(ft.Page, page), "startup failed")
+
+    assert page.window.visible is True
+    assert len(page.controls) == 1
+    assert page.updates == 1
+
+
+def test_run_starts_desktop_view_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(main, **kwargs) -> None:
+        captured["main"] = main
+        captured.update(kwargs)
+
+    monkeypatch.setattr(ft, "run", fake_run)
+
+    run()
+
+    assert captured["main"] is not None
+    assert captured["view"] is ft.AppView.FLET_APP_HIDDEN
