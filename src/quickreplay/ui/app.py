@@ -37,6 +37,7 @@ def _startup_error(message: str) -> ft.Control:
 def _show_startup_error(page: ft.Page, message: str) -> None:
     """Render a startup error, tolerating an already destroyed Flet session."""
     try:
+        page.window.visible = True
         page.add(_startup_error(message))
         page.update()
     except RuntimeError as exc:
@@ -48,6 +49,7 @@ def _configure_window(page: ft.Page) -> None:
     """Apply the fixed-size desktop window policy before the first render."""
     page.title = "QuickReplay"
     page.window.width, page.window.height = WINDOW_SIZES["setup"]
+    page.window.visible = False
     page.window.resizable = False
     page.window.maximizable = False
 
@@ -79,13 +81,17 @@ async def main(page: ft.Page) -> None:
         _show_startup_error(page, f"Could not start the application: {exc}")
         return
 
+    await page.window.wait_until_ready_to_show()
+    page.window.visible = True
+    page.update()
+
     if view.is_active:
         view.start_polling()
 
 
 def run() -> None:
     """Start the Flet desktop application."""
-    ft.run(main)
+    ft.run(main, view=ft.AppView.FLET_APP_HIDDEN)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ product = "QuickReplay"
 [tool.flet.app]
 path = "src"
 module = "main"
+hide_window_on_start = true
 
 [tool.flet.windows]
 artifact = "QuickReplay"
