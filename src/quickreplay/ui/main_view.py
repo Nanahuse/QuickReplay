@@ -208,7 +208,11 @@ class MainView:
             content="Apply", on_click=self._on_settings_apply
         )
 
-        self.setup_button = ft.FilledButton(content="← Setup", on_click=self._on_setup)
+        self.setup_button = ft.IconButton(
+            icon=ft.Icons.ARROW_BACK,
+            tooltip="Setup",
+            on_click=self._on_setup,
+        )
         recording_settings = ft.Column(
             controls=[
                 ft.Text("Recording", weight=ft.FontWeight.BOLD),
@@ -265,6 +269,7 @@ class MainView:
                         self.state_text,
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 self.recording_section,
                 self.replay_panel,
@@ -506,7 +511,7 @@ class MainView:
             self._replay_repeater.release()
             self._replay_repeat_active = False
         self.state_text.value = (
-            "Resuming"
+            "Starting..."
             if self._resume_in_progress
             else "● REC"
             if state.state is ApplicationState.RECORDING
@@ -544,7 +549,7 @@ class MainView:
         elif state.state is ApplicationState.REPLAY:
             self._stable_session_mode = "replay"
         stable_mode = self._stable_session_mode or "recording"
-        self.mode_button.content = "Resume" if stable_mode == "replay" else "Replay"
+        self.mode_button.content = "Record" if stable_mode == "replay" else "Replay"
         session_disabled = session_disabled or self._resume_in_progress
         self.mode_button.disabled = session_disabled or state.state not in (
             ApplicationState.RECORDING,
@@ -577,7 +582,7 @@ class MainView:
                 else ""
             )
             self.recording_status_text.value = (
-                f"Input {metrics.input_fps} fps · Rec {metrics.recording_fps} fps · "
+                f"Input {metrics.input_fps} · Rec {metrics.recording_fps} fps · "
                 f"Seg {metrics.segments} · Buf {metrics.buffer}{drops}"
             )
         else:

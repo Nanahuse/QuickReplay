@@ -28,6 +28,7 @@ from quickreplay.ui.main_view import (
     WINDOW_SIZES,
     MainView,
 )
+from quickreplay.ui.presentation import MetricsView
 from quickreplay.ui.session import UiSession
 
 
@@ -160,7 +161,10 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert cast(ft.Text, view.replay_forward1_button.content).value == "+1f"
     assert cast(ft.Text, view.replay_forward20_button.content).value == "+20f"
     assert view.set_point_button.content == "Set Point"
-    assert view.mode_button.content == "Resume"
+    assert view.mode_button.content == "Record"
+    assert isinstance(view.setup_button, ft.IconButton)
+    assert view.setup_button.icon == ft.Icons.ARROW_BACK
+    assert view.setup_button.tooltip == "Setup"
     assert view.control.scroll is None
     assert view.setup_body.scroll == ft.ScrollMode.AUTO
     assert view.setup_actions in view.setup_section.controls
@@ -169,7 +173,21 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     button_group = cast(ft.Row, header.controls[0])
     assert view.mode_button in button_group.controls
     assert view.setup_button in button_group.controls
+    assert header.vertical_alignment == ft.CrossAxisAlignment.CENTER
     assert WINDOW_SIZES["recording"][0] == WINDOW_SIZES["replay"][0]
+
+
+def test_recording_header_uses_shared_navigation_and_replay_action(tmp_path: Path) -> None:
+    session, bridge = _session(tmp_path)
+    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RECORDING)
+    asyncio.run(session.poll())
+    view, _page = _view(session)
+
+    view.render(session.view_state())
+
+    assert isinstance(view.setup_button, ft.IconButton)
+    assert view.mode_button.content == "Replay"
+    assert view.state_text.value == "● REC"
 
 
 def test_resuming_uses_recording_size_before_recording_starts(tmp_path: Path) -> None:
@@ -232,7 +250,7 @@ def test_replay_transport_buttons_share_fixed_dimensions_and_style(tmp_path: Pat
     assert view.replay_play_button.height == REPLAY_TRANSPORT_BUTTON_HEIGHT
 
 
-def test_resume_button_immediately_enters_compact_pending_layout(tmp_path: Path) -> None:
+def test_record_button_enters_compact_pending_layout(tmp_path: Path) -> None:
     session, bridge = _session(tmp_path)
     bridge.snapshot_value = ApplicationSnapshot(
         state=ApplicationState.REPLAY,
@@ -248,7 +266,29 @@ def test_resume_button_immediately_enters_compact_pending_layout(tmp_path: Path)
 
     assert bridge.resume_requests == 1
     assert (window.width, window.height) == WINDOW_SIZES["recording"]
-    assert view.state_text.value == "Resuming"
+    assert view.state_text.value == "Starting..."
     assert view.replay_panel.visible is False
-    assert view.mode_button.content == "Resume"
+    assert view.mode_button.content == "Record"
     assert view.mode_button.disabled is True
+
+
+def test_recording_metrics_show_fps_suffix_once_and_preserve_drops(tmp_path: Path) -> None:
+    session, _bridge = _session(tmp_path)
+    view, _page = _view(session)
+    metrics = MetricsView(
+        input_fps="59.4",
+        recording_fps="59.3",
+        buffer="4.0 / 60 s",
+        buffer_fraction=4 / 60,
+        segments="2",
+        drops="Video 1 / Audio 0",
+        video_drops=1,
+        audio_drops=0,
+        has_drops=True,
+    )
+
+    view.render(replace(session.view_state(), metrics=metrics))
+
+    assert view.recording_status_text.value == (
+        "Input 59.4 · Rec 59.3 fps · Seg 2 · Buf 4.0 / 60 s · ⚠ Drops V:1 A:0"
+    )
