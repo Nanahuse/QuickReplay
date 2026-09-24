@@ -1,5 +1,6 @@
 """Desktop bootstrap: configuration, settings and application wiring."""
 
+import tomllib
 from pathlib import Path
 from typing import Any, cast
 
@@ -133,3 +134,12 @@ def test_run_starts_desktop_view_hidden(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert captured["main"] is not None
     assert captured["view"] is ft.AppView.FLET_APP_HIDDEN
+
+
+def test_built_windows_runner_hides_its_initial_native_window() -> None:
+    project_file = Path(__file__).parents[1] / "pyproject.toml"
+
+    with project_file.open("rb") as config_file:
+        config = tomllib.load(config_file)
+
+    assert config["tool"]["flet"]["app"]["hide_window_on_start"] is True
