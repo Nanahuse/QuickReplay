@@ -272,6 +272,9 @@ class UiSession:
         config = self.build_input_config()
         if config is None:
             return
+        self._error = None
+        self._status = None
+        self._reset_replay_state()
         self._pending_start_input = config
         await self._bridge.start_recording(config)
 

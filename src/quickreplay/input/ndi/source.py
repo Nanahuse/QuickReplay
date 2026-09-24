@@ -81,6 +81,9 @@ class NdiInputSource:
         """Resolve the configured source and create its single receiver."""
         if self._receiver is not None:
             raise NdiReceiverError("the NDI source is already open")
+        self._video_info = None
+        self._audio_info = None
+        self._stream_info = None
         self._backend.initialize()
         self._initialized = True
         try:

@@ -65,7 +65,7 @@ def _metrics() -> RecordingMetrics:
 def _commands() -> list[WorkerCommand]:
     request_id = uuid4()
     return [
-        StartRecording(input_config=NdiInputConfig("PC-A (OBS)")),
+        StartRecording(request_id=request_id, input_config=NdiInputConfig("PC-A (OBS)")),
         PrepareReplay(request_id=request_id),
         ResumeRecording(request_id=request_id),
         ChangeInput(request_id=request_id, input_config=NdiInputConfig("PC-B (OBS)")),

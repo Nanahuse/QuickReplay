@@ -140,7 +140,7 @@ class RecorderWorkerRuntime:
             self._reject(None, "StartRecording is only valid while idle")
             return
         self._set_state(WorkerState.STARTING)
-        self._begin_session(command.input_config, None)
+        self._begin_session(command.input_config, command.request_id)
 
     def _on_prepare(self, command: PrepareReplay) -> None:
         pipeline = self._pipeline

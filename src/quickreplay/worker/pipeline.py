@@ -135,8 +135,9 @@ class RecordingPipeline:
         self._capture_thread.start()
 
         try:
-            if not self._format_ready.wait(timeout=settings.stream_start_timeout_seconds):
-                raise PipelineStartupError("timed out waiting for the first video frame")
+            # The capture thread owns both input open and startup timing. In
+            # particular, source discovery/open time is not first-frame wait.
+            self._format_ready.wait()
             if self._fatal is not None:
                 raise self._fatal
             info = self._stream_info
@@ -265,38 +266,47 @@ class RecordingPipeline:
         buffer: list[CaptureItem] = []
         forwarding = False
         first_video_ts: int | None = None
-        control_start = self._clock()
+        first_video_control_time: int | None = None
         try:
             source.open()
+            source_opened_at = self._clock()
             while not self._stop_event.is_set():
-                if (
-                    self._stream_info is None
-                    and self._clock() - control_start >= self._settings.stream_start_timeout_ns
+                if first_video_control_time is None and (
+                    self._clock() - source_opened_at >= self._settings.stream_start_timeout_ns
                 ):
                     raise PipelineStartupError("timed out waiting for the first video frame")
                 item = source.read()
-                if item is None:
-                    time.sleep(_IDLE_SLEEP_SECONDS)
-                    continue
-                if not forwarding:
+                if item is not None and not forwarding:
                     buffer.append(item)
                     if isinstance(item, VideoFrame):
                         if first_video_ts is None:
                             first_video_ts = item.timestamp_ns
-                        if self._bootstrap_complete(item, first_video_ts, supports_audio):
-                            info = source.stream_info
-                            if info is None:
-                                raise PipelineStartupError("the input did not report stream info")
-                            self._stream_info = info
-                            self._first_video_ts = first_video_ts
-                            self._format_ready.set()
+                            first_video_control_time = self._clock()
+                elif item is not None:
+                    self._forward(item, first_video_ts, queues)
+
+                if (
+                    not forwarding
+                    and first_video_control_time is not None
+                    and self._bootstrap_complete(supports_audio, first_video_control_time)
+                ):
+                    info = source.stream_info
+                    if info is None:
+                        raise PipelineStartupError("the input did not report stream info")
+                    self._stream_info = info
+                    self._first_video_ts = first_video_ts
+                    self._format_ready.set()
+
+                if item is None:
+                    time.sleep(_IDLE_SLEEP_SECONDS)
+                if not forwarding:
                     if self._format_ready.is_set() and self._session_ready.wait(timeout=0.01):
                         forwarding = True
                         for buffered in buffer:
                             self._forward(buffered, first_video_ts, queues)
                         buffer.clear()
+                if not forwarding:
                     continue
-                self._forward(item, first_video_ts, queues)
         except BaseException as exc:  # noqa: BLE001 - reported through poll_fatal
             self._set_fatal(exc)
         finally:
@@ -306,18 +316,14 @@ class RecordingPipeline:
                 pass
             self._format_ready.set()
 
-    def _bootstrap_complete(
-        self, frame: VideoFrame, first_video_ts: int, supports_audio: bool
-    ) -> bool:
-        if self._stream_info is not None:
-            return True
+    def _bootstrap_complete(self, supports_audio: bool, first_video_control_time: int) -> bool:
         if not supports_audio:
             return True
         source = self._source
         info = source.stream_info if source is not None else None
         if info is not None and info.audio is not None:
             return True
-        return frame.timestamp_ns - first_video_ts >= self._settings.stream_probe_window_ns
+        return self._clock() - first_video_control_time >= self._settings.stream_probe_window_ns
 
     def _forward(self, item: CaptureItem, first_video_ts: int | None, queues: FrameQueues) -> None:
         if isinstance(item, VideoFrame):
