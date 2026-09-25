@@ -39,11 +39,12 @@ async def _watch_parent_shutdown(page: ft.Page, shutdown_event: Any) -> None:
 
 def run_about_window(shutdown_event: Any) -> None:
     """Pickleable multiprocessing entry point for the native About window."""
-    # Serious Python sets these in the main embedded app. A spawned helper must
-    # not attach its Flet page to the parent's Dart bridge instead of opening a
-    # standalone native window.
-    os.environ.pop("FLET_PLATFORM", None)
-    os.environ.pop("FLET_DART_BRIDGE_PORT", None)
+    # A spawned helper must not inherit the main app's embedded bridge, web
+    # server, or display-routing configuration. Those settings can leave the
+    # child serving a page with no native window, or attach it to the parent.
+    for name in tuple(os.environ):
+        if name.startswith("FLET_"):
+            os.environ.pop(name, None)
 
     async def main(page: ft.Page) -> None:
         await about_page(page, shutdown_event)
