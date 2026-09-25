@@ -748,7 +748,7 @@ class MainView:
             return
         if self.session.view_state().state is not ApplicationState.IDLE:
             return
-        self.page.show_dialog(build_about_dialog(self._on_about_close))
+        self.page.show_dialog(build_about_dialog(self._on_about_close, self.page.update))
         self._update_page()
 
     def _on_about_close(self, event: ft.Event) -> None:

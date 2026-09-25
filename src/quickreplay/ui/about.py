@@ -2,12 +2,68 @@
 
 import ctypes
 import sys
+from collections.abc import Callable
 from ctypes import POINTER, Structure, byref, c_void_p, cast, create_string_buffer
 from importlib.metadata import PackageNotFoundError, version
+from typing import cast as typing_cast
 
 import flet as ft
 
 GITHUB_URL = "https://github.com/Nanahuse/QuickReplay"
+THIRD_PARTY_NOTICE = """# Third-party notices
+
+This file lists the primary third-party components used by the QuickReplay
+Version 2 runtime and Windows package.
+
+## Python
+
+Python Software Foundation License<br>
+https://docs.python.org/3/license.html#psf-license
+
+## Flet
+
+Apache License 2.0<br>
+https://github.com/flet-dev/flet/blob/main/LICENSE
+
+## PyAV
+
+BSD 3-Clause License<br>
+https://github.com/PyAV-Org/PyAV/blob/main/LICENSE.txt
+
+## NumPy
+
+BSD 3-Clause License<br>
+https://github.com/numpy/numpy/blob/main/LICENSE.txt
+
+## ndi-python
+
+MIT License<br>
+https://github.com/buresu/ndi-python/blob/master/LICENSE
+
+## NDI SDK / NDI runtime
+
+NDI SDK License<br>
+https://ndi.video/for-developers/ndi-sdk/license/
+
+QuickReplay does not bundle mpv. Replay playback uses the external mpv
+executable configured by the user."""
+
+THIRD_PARTY_LICENSES = (
+    (
+        "Python",
+        "Python Software Foundation License",
+        "https://docs.python.org/3/license.html#psf-license",
+    ),
+    ("Flet", "Apache License 2.0", "https://github.com/flet-dev/flet/blob/main/LICENSE"),
+    ("PyAV", "BSD 3-Clause License", "https://github.com/PyAV-Org/PyAV/blob/main/LICENSE.txt"),
+    ("NumPy", "BSD 3-Clause License", "https://github.com/numpy/numpy/blob/main/LICENSE.txt"),
+    ("ndi-python", "MIT License", "https://github.com/buresu/ndi-python/blob/master/LICENSE"),
+    (
+        "NDI SDK / NDI Runtime",
+        "NDI SDK License",
+        "https://ndi.video/for-developers/ndi-sdk/license/",
+    ),
+)
 
 MIT_LICENSE = """MIT License
 
@@ -88,7 +144,12 @@ def _windows_executable_version() -> str | None:
     return None
 
 
-def _third_party_row(name: str, license_name: str, url: str) -> ft.Row:
+def _third_party_row(
+    name: str,
+    license_name: str,
+    url: str,
+    on_view: Callable[[ft.Event], None],
+) -> ft.Row:
     return ft.Row(
         controls=[
             ft.Column(
@@ -99,60 +160,135 @@ def _third_party_row(name: str, license_name: str, url: str) -> ft.Row:
                 spacing=0,
                 expand=True,
             ),
-            ft.TextButton(content="License info", url=url),
+            ft.TextButton(content="View", on_click=on_view),
+            ft.TextButton(content="Website", url=url),
         ],
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
 
-def build_about_dialog(on_close) -> ft.AlertDialog:
-    """Build a self-contained, scrollable About dialog with offline license text."""
-    licenses = [
-        (
-            "Python",
-            "Python Software Foundation License",
-            "https://docs.python.org/3/license.html#psf-license",
-        ),
-        ("Flet", "Apache License 2.0", "https://github.com/flet-dev/flet/blob/main/LICENSE"),
-        ("PyAV", "BSD 3-Clause License", "https://github.com/PyAV-Org/PyAV/blob/main/LICENSE.txt"),
-        ("NumPy", "BSD 3-Clause License", "https://github.com/numpy/numpy/blob/main/LICENSE.txt"),
-        ("ndi-python", "MIT License", "https://github.com/buresu/ndi-python/blob/master/LICENSE"),
-        (
-            "NDI SDK / NDI Runtime",
-            "NDI SDK License",
-            "https://ndi.video/for-developers/ndi-sdk/license/",
-        ),
-    ]
-    content = ft.Container(
-        width=520,
-        height=520,
-        content=ft.Column(
-            controls=[
-                ft.Text("QuickReplay", size=24, weight=ft.FontWeight.BOLD),
-                ft.Text(f"Version {application_version()}"),
-                ft.Text("Copyright © 2022 Nanahuse"),
-                ft.TextButton(content="GitHub", url=GITHUB_URL),
-                ft.Divider(),
-                ft.Text("QuickReplay License", size=18, weight=ft.FontWeight.BOLD),
-                ft.Text(MIT_LICENSE, selectable=True),
-                ft.Divider(),
-                ft.Text("Third-party licenses", size=18, weight=ft.FontWeight.BOLD),
-                *(_third_party_row(*license_info) for license_info in licenses),
-                ft.Text(
-                    "The portable Windows package also includes LICENSE_ThirdParty.md.",
-                    size=12,
-                    color=ft.Colors.BLUE_GREY,
+def build_about_dialog(
+    on_close: Callable[[ft.Event], None], on_update: Callable[[], None]
+) -> ft.AlertDialog:
+    """Build the compact About dialog and its internal license views."""
+    dialog = ft.AlertDialog(modal=True)
+
+    def show_top(_event: ft.Event | None = None, *, notify: bool = True) -> None:
+        dialog.title = ft.Text("About")
+        dialog.content = ft.Container(
+            width=480,
+            padding=8,
+            content=ft.Column(
+                controls=[
+                    ft.Text("QuickReplay", size=24, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"Version {application_version()}"),
+                    ft.Text("Copyright © 2022 Nanahuse"),
+                    ft.TextButton(content="GitHub", url=GITHUB_URL),
+                    ft.Divider(),
+                    ft.Text("Licenses", size=18, weight=ft.FontWeight.BOLD),
+                    ft.Row(
+                        controls=[
+                            ft.Column(
+                                controls=[ft.Text("QuickReplay"), ft.Text("MIT License")],
+                                spacing=0,
+                                expand=True,
+                            ),
+                            ft.TextButton(content="View", on_click=show_mit_license),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    ft.Row(
+                        controls=[
+                            ft.Text("Third-party licenses", expand=True),
+                            ft.TextButton(content="View", on_click=show_third_party_list),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                ],
+                spacing=3,
+                tight=True,
+            ),
+        )
+        dialog.actions = [ft.TextButton(content="Close", on_click=on_close)]
+        if notify:
+            on_update()
+
+    def show_mit_license(_event: ft.Event | None = None) -> None:
+        dialog.title = ft.Text("QuickReplay License")
+        dialog.content = ft.Container(
+            width=480,
+            height=190,
+            padding=8,
+            content=ft.Column(
+                controls=[ft.Text(MIT_LICENSE, selectable=True)],
+                scroll=ft.ScrollMode.AUTO,
+            ),
+        )
+        dialog.actions = [
+            ft.TextButton(content="Back", on_click=show_top),
+            ft.TextButton(content="Close", on_click=on_close),
+        ]
+        on_update()
+
+    def show_third_party_notice(
+        _event: ft.Event | None = None,
+        component: str | None = None,
+        license_name: str | None = None,
+    ) -> None:
+        dialog.title = ft.Text(component or "Third-party licenses")
+        dialog.content = ft.Container(
+            width=480,
+            height=190,
+            padding=8,
+            content=ft.Column(
+                controls=[
+                    *(
+                        [
+                            ft.Text(license_name or "", weight=ft.FontWeight.BOLD),
+                            ft.Divider(),
+                        ]
+                        if component
+                        else []
+                    ),
+                    ft.Text(THIRD_PARTY_NOTICE, selectable=True),
+                ],
+                scroll=ft.ScrollMode.AUTO,
+            ),
+        )
+        dialog.actions = [
+            ft.TextButton(content="Back", on_click=show_third_party_list),
+            ft.TextButton(content="Close", on_click=on_close),
+        ]
+        on_update()
+
+    def show_third_party_list(_event: ft.Event | None = None) -> None:
+        dialog.title = ft.Text("Third-party licenses")
+        rows = [
+            _third_party_row(
+                name,
+                license_name,
+                url,
+                lambda event, name=name, license_name=license_name: show_third_party_notice(
+                    event, name, license_name
                 ),
-            ],
-            spacing=8,
-            scroll=ft.ScrollMode.AUTO,
-        ),
-        padding=12,
-    )
-    return ft.AlertDialog(
-        modal=True,
-        title=ft.Text("About"),
-        content=content,
-        actions=[ft.TextButton(content="Close", on_click=on_close)],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
+            )
+            for name, license_name, url in THIRD_PARTY_LICENSES
+        ]
+        dialog.content = ft.Container(
+            width=480,
+            height=205,
+            padding=8,
+            content=ft.Column(
+                controls=typing_cast(list[ft.Control], rows),
+                spacing=2,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+        )
+        dialog.actions = [
+            ft.TextButton(content="Back", on_click=show_top),
+            ft.TextButton(content="Close", on_click=on_close),
+        ]
+        on_update()
+
+    show_top(notify=False)
+    return dialog
