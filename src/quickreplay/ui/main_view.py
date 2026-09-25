@@ -34,7 +34,6 @@ _DESTROYED_SESSION_MARKER = "destroyed session"
 REPLAY_REPEAT_FRAME_INTERVAL_SECONDS = 0.085
 REPLAY_REPEAT_FAST_INTERVAL_SECONDS = 0.050
 REPLAY_FAST_MOVE_FRAMES = 20
-SETUP_REPLAY_FIELD_WIDTH = 260
 SESSION_WINDOW_WIDTH = 420
 SETUP_WINDOW_SIZE = (640, 320)
 RECORDING_WINDOW_HEIGHT = 120
@@ -201,9 +200,7 @@ class MainView:
 
         # Setup settings fields (validation and persistence remain in UiSession).
         self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
-        self.settings_mpv_field = ft.TextField(
-            label="mpv executable", width=SETUP_REPLAY_FIELD_WIDTH
-        )
+        self.settings_mpv_field = ft.TextField(label="mpv executable")
         self.settings_error_text = ft.Text("", color=ft.Colors.RED, visible=False)
         self.setup_status_text = ft.Text("", color=ft.Colors.BLUE_GREY, visible=False)
         self.setup_error_text = ft.Text("", color=ft.Colors.RED, visible=False)
@@ -233,6 +230,7 @@ class MainView:
             spacing=6,
             tight=True,
             expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         self.settings_row = ft.Row(
             controls=[recording_settings, replay_settings],
@@ -263,16 +261,10 @@ class MainView:
                 alignment=ft.MainAxisAlignment.START,
             ),
         )
-        right_actions = ft.Container(
+        right_actions = ft.Row(
+            controls=[self.start_button],
+            alignment=ft.MainAxisAlignment.END,
             expand=True,
-            alignment=ft.Alignment.CENTER_LEFT,
-            content=ft.Container(
-                width=SETUP_REPLAY_FIELD_WIDTH,
-                content=ft.Row(
-                    controls=[self.start_button],
-                    alignment=ft.MainAxisAlignment.END,
-                ),
-            ),
         )
         self.setup_actions = ft.Row(
             controls=[left_actions, right_actions],

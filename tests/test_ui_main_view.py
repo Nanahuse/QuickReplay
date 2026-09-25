@@ -25,7 +25,6 @@ from quickreplay.ui.main_view import (
     REPLAY_TRANSPORT_BUTTON_HEIGHT,
     REPLAY_TRANSPORT_BUTTON_WIDTH,
     REPLAY_TRANSPORT_SPACING,
-    SETUP_REPLAY_FIELD_WIDTH,
     WINDOW_SIZES,
     MainView,
 )
@@ -97,22 +96,18 @@ def test_setup_is_ndi_only_and_compact(tmp_path: Path) -> None:
     assert view.control.expand is True
 
     recording, replay = (cast(ft.Column, control) for control in view.settings_row.controls)
-    left_actions, right_actions = (
-        cast(ft.Container, control) for control in view.setup_actions.controls
-    )
+    left_actions = cast(ft.Container, view.setup_actions.controls[0])
+    right_actions = cast(ft.Row, view.setup_actions.controls[1])
     assert left_actions.expand is True
     assert right_actions.expand is True
-    assert right_actions.alignment == ft.Alignment.CENTER_LEFT
     left_action_row = cast(ft.Row, left_actions.content)
     assert left_action_row.controls == [view.settings_apply_button]
     assert left_action_row.alignment == ft.MainAxisAlignment.START
-    right_alignment_area = cast(ft.Container, right_actions.content)
-    assert right_alignment_area.width == view.settings_mpv_field.width
-    assert right_alignment_area.width == SETUP_REPLAY_FIELD_WIDTH
-    right_action_row = cast(ft.Row, right_alignment_area.content)
-    assert right_action_row.controls == [view.start_button]
-    assert right_action_row.alignment == ft.MainAxisAlignment.END
-    assert view.settings_mpv_field.width == SETUP_REPLAY_FIELD_WIDTH
+    assert right_actions.expand is True
+    assert right_actions.controls == [view.start_button]
+    assert right_actions.alignment == ft.MainAxisAlignment.END
+    assert replay.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+    assert view.settings_mpv_field.expand is not True
     assert cast(ft.Text, recording.controls[0]).value == "Recording"
     assert cast(ft.Text, replay.controls[0]).value == "Replay"
     assert (
