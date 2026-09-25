@@ -15,6 +15,7 @@ from quickreplay.input.models import InputConfig
 class StartRecording:
     """Start recording from the given input."""
 
+    request_id: UUID
     input_config: InputConfig
 
 

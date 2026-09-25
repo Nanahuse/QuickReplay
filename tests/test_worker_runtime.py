@@ -3,7 +3,7 @@
 import pickle
 from fractions import Fraction
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fake_worker_input import (
     FakeInputSource,
@@ -55,11 +55,13 @@ def _settings(tmp_path: Path, **overrides: int) -> RecorderWorkerSettings:
     return RecorderWorkerSettings(working_directory=tmp_path, **defaults)
 
 
-def _start(harness: WorkerHarness) -> None:
+def _start(harness: WorkerHarness) -> UUID:
     harness.start()
     harness.wait_state(WorkerState.IDLE)
-    harness.send(StartRecording(NdiInputConfig("fake")))
+    request_id = uuid4()
+    harness.send(StartRecording(request_id, NdiInputConfig("fake")))
     harness.wait_state(WorkerState.RECORDING)
+    return request_id
 
 
 def _wait_captured(harness: WorkerHarness, factory: ScriptedInputFactory) -> None:
@@ -88,11 +90,12 @@ def test_start_recording(tmp_path: Path) -> None:
     try:
         harness.start()
         harness.wait_state(WorkerState.IDLE)
-        harness.send(StartRecording(NdiInputConfig("fake")))
+        request_id = uuid4()
+        harness.send(StartRecording(request_id, NdiInputConfig("fake")))
         harness.wait_state(WorkerState.STARTING)
         harness.wait_state(WorkerState.RECORDING)
         started = harness.wait_event(StreamStarted)
-        assert started.request_id is None
+        assert started.request_id == request_id
         assert started.stream_info.audio is not None
         assert factory.calls == 1
     finally:
@@ -174,8 +177,14 @@ def test_stop_session_cleans_recording_and_allows_restart(tmp_path: Path) -> Non
     settings = _settings(tmp_path)
     harness = WorkerHarness(settings, input_factory=factory)
     try:
-        _start(harness)
+        first_start_id = _start(harness)
         _wait_captured(harness, factory)
+        first_pipeline = harness.runtime._pipeline
+        assert first_pipeline is not None
+        first_session = first_pipeline.session
+        assert first_session is not None
+        first_session_id = first_session.id
+        first_epoch_ns = first_session.epoch_ns
         request_id = uuid4()
         harness.send(StopSession(request_id))
         harness.wait_state(WorkerState.IDLE)
@@ -183,10 +192,28 @@ def test_stop_session_cleans_recording_and_allows_restart(tmp_path: Path) -> Non
         assert stopped.request_id == request_id
         assert list(settings.buffer_root.iterdir()) == []
         assert harness.runtime._config is None
+        assert harness.runtime._pipeline is None
+        assert factory.sources[0].close_count >= 1
 
-        harness.send(StartRecording(NdiInputConfig("fake")))
+        second_start_id = uuid4()
+        assert second_start_id != first_start_id
+        harness.send(StartRecording(second_start_id, NdiInputConfig("fake")))
         harness.wait_state(WorkerState.RECORDING)
+        restarted = harness.wait_event(
+            StreamStarted, predicate=lambda event: event.request_id == second_start_id
+        )
+        second_pipeline = harness.runtime._pipeline
+        assert second_pipeline is not None
+        assert second_pipeline is not first_pipeline
+        second_session = second_pipeline.session
+        assert second_session is not None
+        assert second_session.id != first_session_id
+        assert second_session.epoch_ns != first_epoch_ns
+        assert restarted.request_id == second_start_id
         assert factory.calls == 2
+        assert factory.sources[0] is not factory.sources[1]
+        assert factory.sources[1].close_count == 0
+        assert first_pipeline._metrics is not second_pipeline._metrics
     finally:
         harness.shutdown()
 
@@ -209,7 +236,7 @@ def test_stop_session_cleans_frozen_replay(tmp_path: Path) -> None:
         assert stopped.request_id == request_id
         assert not prepared.asset.path.exists()
 
-        harness.send(StartRecording(NdiInputConfig("fake")))
+        harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
         harness.wait_state(WorkerState.RECORDING)
     finally:
         harness.shutdown()
@@ -273,7 +300,7 @@ def test_invalid_commands_are_rejected(tmp_path: Path) -> None:
         )
         assert error.code == WorkerErrorCode.INTERNAL_ERROR
 
-        harness.send(StartRecording(NdiInputConfig("fake")))
+        harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
         harness.wait_state(WorkerState.RECORDING)
         harness.send(ResumeRecording(uuid4()))
         rejected = harness.wait_event(
@@ -297,7 +324,7 @@ def test_capture_failure_enters_error(tmp_path: Path) -> None:
     try:
         harness.start()
         harness.wait_state(WorkerState.IDLE)
-        harness.send(StartRecording(NdiInputConfig("fake")))
+        harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
         harness.wait_state(WorkerState.RECORDING)
         error = harness.wait_event(WorkerError, timeout=5.0)
         harness.wait_state(WorkerState.ERROR)
@@ -339,7 +366,7 @@ def test_shutdown_during_recording(tmp_path: Path) -> None:
     harness = WorkerHarness(settings, input_factory=factory)
     harness.start()
     harness.wait_state(WorkerState.IDLE)
-    harness.send(StartRecording(NdiInputConfig("fake")))
+    harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
     harness.wait_state(WorkerState.RECORDING)
     harness.send(Shutdown())
     harness.wait_state(WorkerState.SHUTTING_DOWN)
@@ -357,7 +384,7 @@ def test_shutdown_after_replay_removes_asset(tmp_path: Path) -> None:
     harness = WorkerHarness(settings, input_factory=factory)
     harness.start()
     harness.wait_state(WorkerState.IDLE)
-    harness.send(StartRecording(NdiInputConfig("fake")))
+    harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
     harness.wait_state(WorkerState.RECORDING)
     _wait_captured(harness, factory)
     harness.send(PrepareReplay(uuid4()))

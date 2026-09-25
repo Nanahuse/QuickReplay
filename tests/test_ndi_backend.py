@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from quickreplay.input.ndi.backend import PyNdiReceiver
+from quickreplay.input.ndi import backend
+from quickreplay.input.ndi.backend import PyNdiReceiver, _NdiRuntime
 from quickreplay.input.ndi.errors import NdiUnsupportedFormatError
 
 
@@ -54,3 +55,28 @@ def test_unsupported_native_video_is_freed_before_rejection(fake_ndi) -> None:
         PyNdiReceiver(receiver)._video(ndi, native)
 
     assert freed == [(receiver, native)]
+
+
+def test_ndi_runtime_owner_keeps_runtime_alive_between_sessions(monkeypatch) -> None:
+    initialized = []
+    destroyed = []
+    ndi = SimpleNamespace(
+        initialize=lambda: initialized.append("initialize") or True,
+        destroy=lambda: destroyed.append("destroy"),
+    )
+    monkeypatch.setattr(backend, "import_ndi", lambda: ndi)
+    runtime = _NdiRuntime()
+
+    runtime.acquire()  # worker process owner
+    runtime.acquire()  # first session
+    runtime.release()
+    assert destroyed == []
+
+    runtime.acquire()  # second session
+    runtime.release()
+    assert destroyed == []
+
+    runtime.release()  # worker process exit
+
+    assert initialized == ["initialize"]
+    assert destroyed == ["destroy"]

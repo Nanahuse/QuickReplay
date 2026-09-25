@@ -27,10 +27,10 @@ class RecorderWorkerSettings:
     """How long the encode side waits for the other stream before emitting."""
 
     stream_probe_window_ns: int = 500_000_000
-    """Video timeline observed before an NDI stream is fixed as video-only."""
+    """Control-time window after first video before fixing video-only format."""
 
     stream_start_timeout_ns: int = 5_000_000_000
-    """Control timeout for the first video frame.  Not a media timestamp."""
+    """Control timeout for the first video frame, measured after source.open()."""
 
     metrics_interval_ns: int = 1_000_000_000
 

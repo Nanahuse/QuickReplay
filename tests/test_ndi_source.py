@@ -43,6 +43,26 @@ def test_open_resolves_machine_prefixed_name() -> None:
         source.close()
 
 
+def test_reopen_resets_observed_stream_formats() -> None:
+    backend = FakeBackend(sources=("My Source",), script=[fake_video(), fake_audio()])
+    source = _source(backend)
+    source.open()
+    assert isinstance(source.read(), VideoFrame)
+    assert isinstance(source.read(), AudioFrame)
+    assert source.stream_info is not None
+    assert source.stream_info.audio is not None
+    source.close()
+
+    source.open()
+
+    assert source.stream_info is None
+    frame = source.read()
+    assert isinstance(frame, VideoFrame)
+    assert source.stream_info is not None
+    assert source.stream_info.audio is None
+    source.close()
+
+
 def test_read_returns_none_when_nothing_is_available() -> None:
     backend = FakeBackend(sources=("My Source",), script=[])
     source = _source(backend)

@@ -176,6 +176,31 @@ def test_successful_start_persists_input(tmp_path: Path) -> None:
     assert store.load().input == NdiInputConfig("OBS")
 
 
+def test_new_start_clears_session_error_and_replay_transients(tmp_path: Path) -> None:
+    session, bridge, _store = _session(tmp_path)
+    asyncio.run(session.start())
+    asyncio.run(_discover(session, bridge, (NdiInputDescriptor("OBS"),)))
+    session.note_error("previous recording failed")
+    session._replay_position_ns = 123
+    session._replay_paused = True
+    session._frame_navigation_active = True
+    session._set_point = SetPoint(123)
+    session._time_difference_ns = 4
+    session._frame_difference = 2
+
+    asyncio.run(session.start_recording())
+
+    state = session.view_state()
+    assert state.error_message is None
+    assert state.selected_key is not None
+    assert session._replay_position_ns is None
+    assert session._replay_paused is None
+    assert session._frame_navigation_active is False
+    assert session._set_point is None
+    assert session._time_difference_ns is None
+    assert session._frame_difference is None
+
+
 def test_failed_start_does_not_persist(tmp_path: Path) -> None:
     session, bridge, store = _session(tmp_path)
     asyncio.run(session.start())

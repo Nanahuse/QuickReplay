@@ -129,10 +129,11 @@ def test_late_frame_beyond_holdback_is_an_ordering_error(tmp_path: Path) -> None
 
 
 def test_audio_after_video_only_session_is_a_format_change(tmp_path: Path) -> None:
-    script, _video_frames, _audio_samples = build_script(duration_ns=1_500_000_000, fps=FPS)
-    script.append(audio_frame(1_600_000_000))
+    script: list[object] = [video_frame(index * 16_666_667, fps=FPS) for index in range(4)]
+    script.extend([None] * 80)
+    script.extend([lambda: time.sleep(0.12), audio_frame(1_600_000_000)])
     source = FakeInputSource(script, video_stream=video_info(FPS), audio_stream=audio_info())
-    pipeline = _pipeline(tmp_path, source, supports_audio=True)
+    pipeline = _pipeline(tmp_path, source, supports_audio=True, stream_probe_window_ns=50_000_000)
     pipeline.start(NdiInputConfig("fake"))
     try:
         _wait_until(lambda: pipeline.poll_fatal() is not None, timeout=5.0)
@@ -180,6 +181,50 @@ def test_startup_timeout_without_video(tmp_path: Path) -> None:
 
     with pytest.raises(PipelineStartupError):
         pipeline.start(NdiInputConfig("fake"))
+
+
+def test_first_video_timeout_starts_after_source_open(tmp_path: Path) -> None:
+    class SlowOpenSource(FakeInputSource):
+        def open(self) -> None:
+            time.sleep(0.12)
+            super().open()
+
+    source = SlowOpenSource([video_frame(0, fps=FPS)], video_stream=video_info(FPS))
+    pipeline = _pipeline(
+        tmp_path,
+        source,
+        supports_audio=False,
+        stream_start_timeout_ns=50_000_000,
+    )
+
+    info = pipeline.start(NdiInputConfig("fake"))
+
+    try:
+        assert info.audio is None
+        assert source.open_count == 1
+    finally:
+        pipeline.stop()
+
+
+def test_audio_probe_uses_control_time_not_media_timestamp_delta(tmp_path: Path) -> None:
+    timestamps = (0, 200_000_000, 400_000_000, 600_000_000)
+    script: list[object] = [video_frame(timestamp, fps=FPS) for timestamp in timestamps]
+    script.append(audio_frame(600_000_000))
+    source = FakeInputSource(
+        script,
+        video_stream=video_info(FPS),
+        audio_stream=audio_info(),
+    )
+    pipeline = _pipeline(tmp_path, source, supports_audio=True)
+
+    info = pipeline.start(NdiInputConfig("fake"))
+
+    try:
+        assert info.audio == audio_info()
+        _wait_until(lambda: pipeline.metrics().captured_audio_samples > 0)
+        assert pipeline.poll_fatal() is None
+    finally:
+        pipeline.stop()
 
 
 def test_pre_epoch_audio_is_dropped(tmp_path: Path) -> None:

@@ -77,6 +77,11 @@ def _metrics(frames: int = 10) -> RecordingMetrics:
     )
 
 
+def _ids_after_start(*request_ids):
+    """Reserve the first deterministic ID for the initial StartRecording."""
+    return SequenceRequestIds(uuid4(), *request_ids)
+
+
 def _asset() -> ReplayAsset:
     return ReplayAsset(Path("replay.mkv"), 1_000_000_000, FPS)
 
@@ -105,7 +110,8 @@ def _to_recording(
     app.start()
     app.poll()
     app.start_recording(NdiInputConfig("fake"))
-    worker.push(StreamStarted(stream_info=_info(), request_id=None))
+    start_request = worker.commands_of(StartRecording)[0]
+    worker.push(StreamStarted(stream_info=_info(), request_id=start_request.request_id))
     app.poll()
     assert app.state == ApplicationState.RECORDING
     return app
@@ -114,7 +120,7 @@ def _to_recording(
 def _to_replay(
     worker: FakeWorker, replay_factory: FakeReplayFactory, replay_id
 ) -> ApplicationController:
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     app.request_replay()
     worker.push(ReplayPrepared(request_id=replay_id, asset=_asset()))
     app.poll()
@@ -165,17 +171,19 @@ def test_start_process_exit_enters_error() -> None:
 
 
 def test_start_recording() -> None:
+    start_id = uuid4()
     worker = FakeWorker()
-    app = _app(worker)
+    app = _app(worker, request_id_factory=SequenceRequestIds(start_id))
     app.start()
     app.poll()
 
     app.start_recording(NdiInputConfig("fake"))
 
     assert app.state == ApplicationState.STARTING
-    assert worker.commands_of(StartRecording)
+    starts = worker.commands_of(StartRecording)
+    assert starts and starts[0].request_id == start_id
 
-    worker.push(StreamStarted(stream_info=_info(), request_id=None))
+    worker.push(StreamStarted(stream_info=_info(), request_id=start_id))
     events = app.poll()
 
     assert app.state == ApplicationState.RECORDING
@@ -183,11 +191,54 @@ def test_start_recording() -> None:
     assert any(isinstance(event, RecordingStarted) for event in events)
 
 
+def test_restart_uses_fresh_start_id_and_ignores_stale_start_result() -> None:
+    start_a, stop_id, start_b = uuid4(), uuid4(), uuid4()
+    worker = FakeWorker()
+    app = _app(worker, request_id_factory=SequenceRequestIds(start_a, stop_id, start_b))
+    app.start()
+    app.poll()
+
+    app.start_recording(NdiInputConfig("same source"))
+    worker.push(StreamStarted(stream_info=_info(), request_id=start_a))
+    app.poll()
+    worker.push(RecordingMetricsUpdated(metrics=_metrics()))
+    app.poll()
+    assert app.snapshot().metrics == _metrics()
+
+    assert app.stop_session() == stop_id
+    worker.push(SessionStopped(request_id=stop_id))
+    app.poll()
+    assert app.state == ApplicationState.IDLE
+    assert app.snapshot().stream_info is None
+    assert app.snapshot().metrics is None
+    assert app.snapshot().replay_asset is None
+
+    app.start_recording(NdiInputConfig("same source"))
+    starts = worker.commands_of(StartRecording)
+    assert [command.request_id for command in starts] == [start_a, start_b]
+    assert app.snapshot().stream_info is None
+    assert app.snapshot().metrics is None
+    assert app.snapshot().error_message is None
+
+    worker.push(StreamStarted(stream_info=_info(Fraction(30, 1)), request_id=start_a))
+    worker.push(WorkerError(WorkerErrorCode.ENCODER_FAILED, "stale failure", request_id=start_a))
+    app.poll()
+    assert app.state == ApplicationState.STARTING
+    assert app.snapshot().stream_info is None
+    assert app.snapshot().error_message is None
+
+    new_info = _info(Fraction(30, 1))
+    worker.push(StreamStarted(stream_info=new_info, request_id=start_b))
+    app.poll()
+    assert app.state == ApplicationState.RECORDING
+    assert app.snapshot().stream_info == new_info
+
+
 def test_replay_lifecycle() -> None:
     replay_id = uuid4()
     worker = FakeWorker()
     replay_factory = FakeReplayFactory()
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
 
     app.request_replay()
 
@@ -208,7 +259,7 @@ def test_stale_replay_prepared_is_ignored() -> None:
     replay_id = uuid4()
     worker = FakeWorker()
     replay_factory = FakeReplayFactory()
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     app.request_replay()
 
     worker.push(ReplayPrepared(request_id=uuid4(), asset=_asset()))
@@ -227,7 +278,7 @@ def test_replay_open_failure_enters_error() -> None:
     replay_id = uuid4()
     worker = FakeWorker()
     replay_factory = FakeReplayFactory(open_error=MpvStartupError("mpv missing"))
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     app.request_replay()
 
     worker.push(ReplayPrepared(request_id=replay_id, asset=_asset()))
@@ -314,7 +365,7 @@ def test_replay_is_closed_before_resume_is_sent() -> None:
     worker = FakeWorker()
     worker.order = order
     replay_factory = FakeReplayFactory(order=order)
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     app.request_replay()
     worker.push(ReplayPrepared(request_id=replay_id, asset=_asset()))
     app.poll()
@@ -344,7 +395,7 @@ def test_stale_resume_response_is_ignored() -> None:
 def test_change_input() -> None:
     change_id = uuid4()
     worker = FakeWorker()
-    app = _to_recording(worker, request_id_factory=SequenceRequestIds(change_id))
+    app = _to_recording(worker, request_id_factory=_ids_after_start(change_id))
     new_info = _info()
 
     returned = app.change_input(NdiInputConfig("cam"))
@@ -364,7 +415,7 @@ def test_change_input() -> None:
 def test_stale_change_input_response_does_not_override() -> None:
     change_id = uuid4()
     worker = FakeWorker()
-    app = _to_recording(worker, request_id_factory=SequenceRequestIds(change_id))
+    app = _to_recording(worker, request_id_factory=_ids_after_start(change_id))
     original = app.snapshot().stream_info
     app.change_input(NdiInputConfig("cam"))
 
@@ -378,7 +429,7 @@ def test_stale_change_input_response_does_not_override() -> None:
 def test_discovery_does_not_change_state() -> None:
     discovery_id = uuid4()
     worker = FakeWorker()
-    app = _to_recording(worker, request_id_factory=SequenceRequestIds(discovery_id))
+    app = _to_recording(worker, request_id_factory=_ids_after_start(discovery_id))
     descriptor = NdiInputDescriptor("PC (OBS)")
 
     returned = app.discover_inputs()
@@ -397,7 +448,7 @@ def test_discovery_does_not_change_state() -> None:
 def test_discovery_error_is_non_fatal() -> None:
     discovery_id = uuid4()
     worker = FakeWorker()
-    app = _to_recording(worker, request_id_factory=SequenceRequestIds(discovery_id))
+    app = _to_recording(worker, request_id_factory=_ids_after_start(discovery_id))
     app.discover_inputs()
 
     worker.push(
@@ -429,7 +480,7 @@ def test_metrics_after_replay_request_are_ignored() -> None:
     replay_id = uuid4()
     worker = FakeWorker()
     replay_factory = FakeReplayFactory()
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     worker.push(RecordingMetricsUpdated(metrics=_metrics(50)))
     app.poll()
     app.request_replay()
@@ -559,7 +610,7 @@ def test_invalid_operations_are_rejected() -> None:
     replay_id = uuid4()
     worker = FakeWorker()
     replay_factory = FakeReplayFactory()
-    app = _app(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _app(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
 
     with pytest.raises(InvalidApplicationStateError):
         app.request_replay()
@@ -570,7 +621,8 @@ def test_invalid_operations_are_rejected() -> None:
         app.resume_recording()
 
     app.start_recording(NdiInputConfig("fake"))
-    worker.push(StreamStarted(stream_info=_info(), request_id=None))
+    start_request = worker.commands_of(StartRecording)[0]
+    worker.push(StreamStarted(stream_info=_info(), request_id=start_request.request_id))
     app.poll()
     with pytest.raises(InvalidApplicationStateError):
         app.play()
@@ -636,7 +688,7 @@ def test_shutdown_from_replay_closes_replay_first() -> None:
     worker = FakeWorker()
     worker.order = order
     replay_factory = FakeReplayFactory(order=order)
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     app.request_replay()
     worker.push(ReplayPrepared(request_id=replay_id, asset=_asset()))
     app.poll()
@@ -650,7 +702,7 @@ def test_shutdown_during_preparing_replay_ignores_late_prepared() -> None:
     replay_id = uuid4()
     worker = FakeWorker()
     replay_factory = FakeReplayFactory()
-    app = _to_recording(worker, replay_factory, request_id_factory=SequenceRequestIds(replay_id))
+    app = _to_recording(worker, replay_factory, request_id_factory=_ids_after_start(replay_id))
     app.request_replay()
 
     app.shutdown()

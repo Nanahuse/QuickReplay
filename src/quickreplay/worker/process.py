@@ -10,6 +10,7 @@ import queue
 from multiprocessing.process import BaseProcess
 from typing import Any
 
+from quickreplay.input.ndi.backend import PyNdiBackend
 from quickreplay.recording.commands import WorkerCommand
 from quickreplay.recording.events import WorkerEvent
 from quickreplay.worker.runtime import RecorderWorkerRuntime
@@ -20,8 +21,13 @@ def worker_process_main(
     command_queue: Any, event_queue: Any, settings: RecorderWorkerSettings
 ) -> None:
     """Entry point of the worker process (module level, picklable)."""
-    runtime = RecorderWorkerRuntime(settings, command_queue=command_queue, emit=event_queue.put)
-    runtime.run()
+    ndi_runtime_owner = PyNdiBackend()
+    ndi_runtime_owner.initialize()
+    try:
+        runtime = RecorderWorkerRuntime(settings, command_queue=command_queue, emit=event_queue.put)
+        runtime.run()
+    finally:
+        ndi_runtime_owner.shutdown()
 
 
 def spawn_context() -> Any:

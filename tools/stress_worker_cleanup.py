@@ -42,7 +42,7 @@ def _settings(tmp: Path) -> RecorderWorkerSettings:
 def _start(harness: WorkerHarness, factory: ScriptedInputFactory) -> None:
     harness.start()
     harness.wait_state(WorkerState.IDLE)
-    harness.send(StartRecording(NdiInputConfig("fake")))
+    harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
     harness.wait_state(WorkerState.RECORDING)
     harness.wait_event(
         RecordingMetricsUpdated,
@@ -99,7 +99,7 @@ def _shutdown(iterations: int) -> int:
         try:
             harness.start()
             harness.wait_state(WorkerState.IDLE)
-            harness.send(StartRecording(NdiInputConfig("fake")))
+            harness.send(StartRecording(uuid4(), NdiInputConfig("fake")))
             harness.wait_state(WorkerState.RECORDING)
             harness.send(Shutdown())
             harness.wait_state(WorkerState.SHUTTING_DOWN)

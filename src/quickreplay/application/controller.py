@@ -168,6 +168,7 @@ class ApplicationController:
         self._error_message: str | None = None
 
         self._pending_kind: str | None = None
+        self._pending_start_request_id: UUID | None = None
         self._pending_stream_request_id: UUID | None = None
         self._pending_replay_request_id: UUID | None = None
         self._pending_resume_request_id: UUID | None = None
@@ -218,12 +219,20 @@ class ApplicationController:
         self._set_state(ApplicationState.IDLE)
 
     def start_recording(self, input_config: InputConfig) -> None:
-        """Start the initial recording from *input_config*."""
+        """Start a fresh recording session from *input_config*."""
         self._require_state(ApplicationState.IDLE, "start_recording")
+        request_id = self._request_id_factory()
+        self._stream_info = None
+        self._metrics = None
+        self._replay_asset = None
+        self._error_message = None
+        self._pending_replay_request_id = None
+        self._pending_resume_request_id = None
+        self._pending_start_request_id = request_id
         self._pending_kind = _START
-        self._pending_stream_request_id = None
+        self._pending_stream_request_id = request_id
         self._set_state(ApplicationState.STARTING)
-        self._send(StartRecording(input_config))
+        self._send(StartRecording(request_id=request_id, input_config=input_config))
 
     def request_replay(self) -> UUID:
         """Freeze the buffer and build a replay asset."""
@@ -393,7 +402,7 @@ class ApplicationController:
 
     def _handle_stream_started(self, event: StreamStarted) -> None:
         if self._state == ApplicationState.STARTING:
-            if self._pending_kind == _START and event.request_id is None:
+            if self._pending_kind == _START and event.request_id == self._pending_start_request_id:
                 self._accept_stream(event)
                 return
             if (
@@ -414,6 +423,7 @@ class ApplicationController:
     def _accept_stream(self, event: StreamStarted) -> None:
         self._stream_info = event.stream_info
         self._pending_kind = None
+        self._pending_start_request_id = None
         self._pending_stream_request_id = None
         self._set_state(ApplicationState.RECORDING)
         self._emit(RecordingStarted(stream_info=event.stream_info))
@@ -448,6 +458,7 @@ class ApplicationController:
         self._metrics = None
         self._replay_asset = None
         self._pending_kind = None
+        self._pending_start_request_id = None
         self._pending_stream_request_id = None
         self._pending_replay_request_id = None
         self._pending_resume_request_id = None
@@ -479,6 +490,26 @@ class ApplicationController:
                 )
             )
             return
+        if request_id is not None:
+            if self._state == ApplicationState.STARTING:
+                expected_id = (
+                    self._pending_start_request_id
+                    if self._pending_kind == _START
+                    else self._pending_stream_request_id
+                )
+                if request_id != expected_id:
+                    return
+            elif self._state == ApplicationState.RESUMING:
+                if request_id != self._pending_resume_request_id:
+                    return
+            elif self._state == ApplicationState.PREPARING_REPLAY:
+                if request_id != self._pending_replay_request_id:
+                    return
+            elif self._state == ApplicationState.STOPPING:
+                if request_id != self._pending_stop_request_id:
+                    return
+            else:
+                return
         self._fail(event.message, source="worker", code=event.code, request_id=request_id)
 
     # -- replay liveness ---------------------------------------------------

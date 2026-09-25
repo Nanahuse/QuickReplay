@@ -36,9 +36,9 @@ class InputsDiscovered:
 class StreamStarted:
     """The input stream has started and its format is known.
 
-    ``request_id`` correlates the event with a ``ResumeRecording`` or
-    ``ChangeInput`` command so a stale asynchronous response can be ignored.
-    ``StartRecording`` leaves it ``None``.
+    ``request_id`` correlates the event with a ``StartRecording``,
+    ``ResumeRecording`` or ``ChangeInput`` command so stale responses can be
+    ignored.
     """
 
     stream_info: StreamInfo
