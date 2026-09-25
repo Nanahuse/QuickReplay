@@ -6,7 +6,8 @@ own handlers with a stub page.
 """
 
 import asyncio
-import multiprocessing
+import subprocess
+import sys
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
@@ -269,61 +270,35 @@ def test_about_process_starts_once_and_restarts_after_exit(
         bridge.replay_requests,
     )
 
-    class FakeEvent:
-        def __init__(self) -> None:
-            self.set_calls = 0
-
-        def set(self) -> None:
-            self.set_calls += 1
-
     class FakeProcess:
-        def __init__(self, **kwargs: object) -> None:
-            self.kwargs = kwargs
-            self.alive = False
-            self.started = 0
-            self.joined = 0
+        def __init__(self, command: list[str]) -> None:
+            self.command = command
+            self.returncode: int | None = None
 
-        def start(self) -> None:
-            self.started += 1
-            self.alive = True
+        def poll(self) -> int | None:
+            return self.returncode
 
-        def is_alive(self) -> bool:
-            return self.alive
-
-        def join(self, timeout: float = 0) -> None:
-            self.joined += 1
-
-    event = FakeEvent()
     processes: list[FakeProcess] = []
 
-    class FakeContext:
-        def Event(self) -> FakeEvent:
-            return event
+    def fake_popen(command: list[str]) -> FakeProcess:
+        process = FakeProcess(command)
+        processes.append(process)
+        return process
 
-        def Process(self, **kwargs: object) -> FakeProcess:
-            process = FakeProcess(**kwargs)
-            processes.append(process)
-            return process
-
-    monkeypatch.setattr(multiprocessing, "get_context", lambda _method: FakeContext())
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(sys, "argv", ["QuickReplay.exe"])
     view._on_about(cast(ft.Event, object()))
 
     process = processes[0]
-    assert process.started == 1
-    assert process.kwargs["name"] == "QuickReplayAbout"
-    assert process.kwargs["args"] == (event,)
-    assert getattr(process.kwargs["target"], "__name__", None) == "run_about_window"
+    assert process.command == [sys.executable, "--quickreplay-about"]
     view._on_about(cast(ft.Event, object()))
-    assert process.started == 1
 
-    process.alive = False
+    process.returncode = 0
     first_process = process
     view._on_about(cast(ft.Event, object()))
-    assert first_process.started == 1
-    assert first_process.joined == 1
     assert view._about_process is not first_process
     assert view._about_process is not None
-    assert processes[1].started == 1
+    assert processes[1].command == [sys.executable, "--quickreplay-about"]
     assert view._settings_draft() == draft_before
     assert session.view_state().state is state_before.state
     assert session.view_state().selected_key == selected_before
@@ -332,8 +307,6 @@ def test_about_process_starts_once_and_restarts_after_exit(
         len(bridge.recording_configs),
         bridge.replay_requests,
     ) == bridge_calls_before
-
-    assert event.set_calls == 0
 
 
 def test_about_is_disabled_outside_idle_setup_state(tmp_path: Path) -> None:

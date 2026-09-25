@@ -1,8 +1,6 @@
 """Standalone Flet window process for QuickReplay About and license information."""
 
-import asyncio
 import os
-from typing import Any
 
 import flet as ft
 
@@ -12,8 +10,8 @@ ABOUT_WINDOW_SIZE = (680, 540)
 ABOUT_WINDOW_MIN_SIZE = (560, 400)
 
 
-async def about_page(page: ft.Page, shutdown_event: Any) -> None:
-    """Configure the standalone About window and watch for parent shutdown."""
+async def about_page(page: ft.Page) -> None:
+    """Configure the standalone About window."""
     page.title = "QuickReplay — About"
     page.window.width, page.window.height = ABOUT_WINDOW_SIZE
     page.window.min_width, page.window.min_height = ABOUT_WINDOW_MIN_SIZE
@@ -24,29 +22,28 @@ async def about_page(page: ft.Page, shutdown_event: Any) -> None:
     await page.window.wait_until_ready_to_show()
     page.window.visible = True
     page.update()
-    page.run_task(_watch_parent_shutdown, page, shutdown_event)
 
 
-async def _watch_parent_shutdown(page: ft.Page, shutdown_event: Any) -> None:
-    while not shutdown_event.is_set():
-        await asyncio.sleep(0.1)
-    try:
-        await page.window.destroy()
-    except RuntimeError:
-        # The user may close About between the event check and window destroy.
-        return
-
-
-def run_about_window(shutdown_event: Any) -> None:
-    """Pickleable multiprocessing entry point for the native About window."""
-    # A spawned helper must not inherit the main app's embedded bridge, web
-    # server, or display-routing configuration. Those settings can leave the
-    # child serving a page with no native window, or attach it to the parent.
-    for name in tuple(os.environ):
-        if name.startswith("FLET_"):
-            os.environ.pop(name, None)
+def run_about_window(*, embedded: bool) -> None:
+    """Run About in a dedicated app process or a standalone development view."""
+    if not embedded:
+        # A development subprocess should create its own desktop client instead
+        # of attaching to the Flet runner's embedded bridge.
+        for name in tuple(os.environ):
+            if name.startswith("FLET_"):
+                os.environ.pop(name, None)
 
     async def main(page: ft.Page) -> None:
-        await about_page(page, shutdown_event)
+        await about_page(page)
 
     ft.run(main, view=ft.AppView.FLET_APP)
+
+
+def run_about_from_command_line() -> None:
+    """Entry point used by a separately launched packaged app instance."""
+    run_about_window(embedded=True)
+
+
+if __name__ == "__main__":
+    # ``python -m quickreplay.ui.about_window`` development entry point.
+    run_about_window(embedded=False)

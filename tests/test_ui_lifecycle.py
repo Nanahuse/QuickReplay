@@ -5,6 +5,7 @@ window is created.
 """
 
 import asyncio
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any, cast
@@ -301,55 +302,85 @@ def test_double_close_runs_shutdown_once(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def test_main_close_signals_and_joins_about_process_after_core_shutdown(tmp_path: Path) -> None:
-    class FakeEvent:
-        def __init__(self) -> None:
-            self.signaled = False
-
-        def set(self) -> None:
-            self.signaled = True
-
+def test_main_close_waits_for_about_process_after_core_shutdown(tmp_path: Path) -> None:
     class FakeProcess:
-        def __init__(self, event: FakeEvent, order: list[str]) -> None:
-            self.event = event
+        def __init__(self, order: list[str]) -> None:
             self.order = order
-            self.alive = True
-            self.join_timeouts: list[float] = []
+            self.returncode: int | None = None
+            self.wait_timeouts: list[float] = []
 
-        def is_alive(self) -> bool:
-            return self.alive
+        def poll(self) -> int | None:
+            return self.returncode
 
-        def join(self, timeout: float = 0) -> None:
-            self.join_timeouts.append(timeout)
-            self.order.append("about_join")
-            if self.event.signaled:
-                self.alive = False
+        def wait(self, timeout: float) -> int:
+            self.wait_timeouts.append(timeout)
+            self.order.append("about_wait")
+            self.returncode = 0
+            return self.returncode
 
         def terminate(self) -> None:
             self.order.append("about_terminate")
-            self.alive = False
+            self.returncode = 0
 
         def kill(self) -> None:
             self.order.append("about_kill")
-            self.alive = False
+            self.returncode = -9
 
     async def scenario() -> None:
         view, _session, bridge, _page = _make(tmp_path)
-        event = FakeEvent()
-        process = FakeProcess(event, bridge.order)
-        view._about_shutdown_event = cast(Any, event)
+        process = FakeProcess(bridge.order)
         view._about_process = cast(Any, process)
-
         await view.close()
 
-        assert bridge.order.index("shutdown") < bridge.order.index("about_join")
-        assert event.signaled
-        assert process.join_timeouts == [2.0]
+        assert bridge.order.index("shutdown") < bridge.order.index("about_wait")
+        assert process.wait_timeouts == [2.0]
         assert "about_terminate" not in bridge.order
         assert "about_kill" not in bridge.order
         assert view._about_process is None
-        assert view._about_shutdown_event is None
 
+    asyncio.run(scenario())
+
+
+def test_about_process_shutdown_terminates_process_when_graceful_wait_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.wait_timeouts: list[float] = []
+            self.terminated = False
+            self.killed = False
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            self.wait_timeouts.append(timeout)
+            if not self.terminated:
+                raise subprocess.TimeoutExpired("about", timeout)
+            self.returncode = 0
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+    async def scenario() -> None:
+        view, _session, _bridge, _page = _make(tmp_path)
+        process = FakeProcess()
+        view._about_process = cast(Any, process)
+        await view.close()
+        assert process.terminated
+        assert not process.killed
+        assert process.wait_timeouts == [2.0, 1.0]
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
     asyncio.run(scenario())
 
 

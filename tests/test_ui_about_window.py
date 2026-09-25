@@ -31,7 +31,6 @@ class _Page:
         self.window = _Window()
         self.title = ""
         self.controls: list[ft.Control] = []
-        self.tasks: list[tuple[object, tuple[object, ...]]] = []
         self.updates = 0
 
     def add(self, control: ft.Control) -> None:
@@ -40,11 +39,8 @@ class _Page:
     def update(self) -> None:
         self.updates += 1
 
-    def run_task(self, handler: object, *args: object) -> None:
-        self.tasks.append((handler, args))
 
-
-def test_about_process_passes_a_coroutine_handler_to_flet(monkeypatch) -> None:
+def test_packaged_about_process_uses_embedded_flet_window(monkeypatch) -> None:
     captured: dict[str, Any] = {}
 
     def fake_run(main, *, view) -> None:
@@ -52,9 +48,7 @@ def test_about_process_passes_a_coroutine_handler_to_flet(monkeypatch) -> None:
         captured["view"] = view
 
     monkeypatch.setattr(about_window.ft, "run", fake_run)
-    shutdown_event = object()
-
-    about_window.run_about_window(shutdown_event)
+    about_window.run_about_window(embedded=True)
 
     main = captured["main"]
     assert inspect.iscoroutinefunction(main)
@@ -70,10 +64,9 @@ def test_about_process_passes_a_coroutine_handler_to_flet(monkeypatch) -> None:
     assert page.window.maximizable is True
     assert page.window.visible is True
     assert page.controls
-    assert page.tasks == [(about_window._watch_parent_shutdown, (page, shutdown_event))]
 
 
-def test_about_process_clears_inherited_flet_runtime_environment(monkeypatch) -> None:
+def test_development_about_process_clears_inherited_flet_environment(monkeypatch) -> None:
     captured: dict[str, Any] = {}
 
     def fake_run(main, *, view) -> None:
@@ -87,7 +80,18 @@ def test_about_process_clears_inherited_flet_runtime_environment(monkeypatch) ->
     monkeypatch.setenv("FLET_DISPLAY_URL_PREFIX", "http://parent.invalid")
     monkeypatch.setenv("QUICKREPLAY_TEST_VALUE", "preserved")
 
-    about_window.run_about_window(object())
+    about_window.run_about_window(embedded=False)
 
     assert not any(name.startswith("FLET_") for name in os.environ)
     assert os.environ["QUICKREPLAY_TEST_VALUE"] == "preserved"
+
+
+def test_packaged_about_process_preserves_its_native_bridge(monkeypatch) -> None:
+    monkeypatch.setenv("FLET_PLATFORM", "windows")
+    monkeypatch.setenv("FLET_DART_BRIDGE_PORT", "12345")
+
+    monkeypatch.setattr(about_window.ft, "run", lambda *_args, **_kwargs: None)
+    about_window.run_about_window(embedded=True)
+
+    assert os.environ["FLET_PLATFORM"] == "windows"
+    assert os.environ["FLET_DART_BRIDGE_PORT"] == "12345"
