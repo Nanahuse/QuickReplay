@@ -1,8 +1,22 @@
-__pycache__
-*/__pycache__/*
-tmp_video/*.mp4
-dist/*
-build/*
-*.spec
-env/*
-config.json
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# Build output
+dist/
+build/
+
+# Runtime recording data (keep intentional test fixtures tracked)
+buffer/
+*.mkv
+!tests/**/*.mkv
+
+# Local environment / editor
+.env
+.vscode/

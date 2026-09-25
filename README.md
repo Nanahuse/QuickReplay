@@ -1,67 +1,119 @@
-[![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
 # QuickReplay
 
-Webカメラの出力を記録し、簡単にリプレイなどを行えるソフト。  
+QuickReplay Version 2 is a Windows desktop instant replay application for NDI
+inputs.
 
-## 機能
-* リプレイ機能（コマ送り、コマ戻し、早送り、早戻し、等速再生）
-* フレームカウンター（指定したフレームからのフレーム差、時間の差を表示する）
+Version 2 is a rewrite of QuickReplay.  The previous Version 1 implementation
+has been removed from this repository.  The core domain model, the segment
+recording core, the ring storage / retention core, the replay asset
+(stream-copy remux) core, the NDI input core and the
+headless recorder worker (separate process, capture/encode threads, bounded
+queues, replay preparation) and the mpv-based replay controller (external mpv
+process, JSON IPC, frame-accurate stepping and seeking) are implemented.  The
+headless application controller orchestrates recording, replay preparation, mpv
+playback and recording resume.  Configuration persistence (versioned JSON
+schema v1, NDI input selection, recorder buffer setting, mpv executable
+setting, atomic save) is implemented.  A Flet 1.0 desktop UI is implemented:
+NDI input discovery and selection, recording state,
+stream information and metrics, replay preparation, and the replay control UI
+(Play/Pause, ±1 and ±20 frame steps, seek bar, Set Point, time and frame
+difference, resume).  A settings editor (explicit Apply/Cancel) edits the
+persisted configuration: the recording buffer duration and the mpv executable.
+Buffer duration and mpv executable changes are saved but need an application
+restart to take effect.
 
-<br><br>
+## Requirements
 
+- Python >= 3.14
+- [uv](https://docs.astral.sh/uv/)
 
-# Setup
+The local development baseline is Python 3.14 (see `.python-version`).  This is
+the development baseline, not an upper bound: Version 2 supports Python 3.14
+and later.
 
-## Use Binary
-[リリースページ](https://github.com/Nanahuse/QuickReplay/releases)から最新版のzipファイルをダウンロードしてください。  
-インストール不要で解凍すれば使えます。
+## Development setup
 
-## Use Python
-requiments.txtが用意してありますが、[yushulx/python-capture-device-list](https://github.com/yushulx/python-capture-device-list)がpip経由では上手くインストールできないため除いてあります。別途手動でインストールしてください。
+```powershell
+uv sync
+```
 
-<br><br>
+## Run the desktop app
 
-# 使い方
-## 設定画面
-### WebCameraに関する設定
-入力デバイス、解像度、フレームレートを指定してください。設定可能なフレームレートは入力デバイスによって異なるので確認してください。
-### Replayに関する設定
-リプレイ時間にはリプレイを保存する長さを秒単位で指定してください。リプレイ時間が長くなるほど大きな保存容量が必要になります。
+```powershell
+uv run flet run src/main.py
+```
 
-録画時プレビューでは録画時にプレビュー画面を開くかどうかを設定します。録画時にプレビュー画面を閉じることでドロステ効果を防止します。[ドロステ効果 - Wikipedia](https://ja.wikipedia.org/wiki/%E3%83%89%E3%83%AD%E3%82%B9%E3%83%86%E5%8A%B9%E6%9E%9C)
+## Build for Windows
 
-### Save & Reset
-「Save」を押すことで現在の設定を保存できます。次回実行時には自動で読み込まれます。  
-「Reset」を押すと直前にSaveしたデータを読み込むことができます。
+Windows packaging requires Visual Studio with **Desktop development with C++**
+and Windows Developer Mode (for symlink support). Build the x64 desktop
+application from a clean Flet build with:
 
-### Start
-設定が終わったら「Start」を押すと実行画面に変わります。  
-入力デバイスが開けなかった場合はエラー画面になります。
+```powershell
+uv run flet clean
+uv run flet build windows --python-version 3.14
+```
 
+The packaged application is generated under `build/windows` as
+`QuickReplay.exe`. The build uses the dependencies declared in
+`pyproject.toml`; no separate `requirements.txt` is needed.
 
-![設定画面](docs/img/setting_window.png)
+### Runtime requirements
 
-<br>
+The packaged application does not require Python, uv, or Visual Studio to run.
+Replay playback requires an external mpv executable, which can be configured
+from Settings. mpv is not bundled in the distribution ZIP.
 
-## 実行画面
-### フレームカウンターの使用方法
-1. 録画、再生を行っていない状態で実行画面左下の「Set point」を押す。
-1. 「Set point」を0としたときの現在の表示フレームのフレーム数とタイムが表示される。
-### リプレイ中の画面
-![実行画面](docs/img/player_window_replay.png)
+NDI input uses the NDI runtime available to the packaged application through
+the existing `ndi-python` integration; this phase does not introduce a new NDI
+distribution mechanism.
 
-### 録画中の画面  
-![実行画面](docs/img/player_window_recording.png)
+## Test
 
-<br>
+```powershell
+uv run pytest
+```
 
-## OBSとの連携させて使用する場合のおすすめ
+## Lint
 
-OBSで使用する場合はobs-virtual-camというプラグインが便利です。  
-画面全体をWebカメラとして出力したり、フィルタを使うことで映像ソースを直接Webカメラに出力できます。
-* [OBS 27まで](https://github.com/Fenrirthviti/obs-virtual-cam/releases)
-* [OBS 28以降](https://github.com/Avasam/obs-virtual-cam/releases) 
+```powershell
+uv run ruff check .
+```
 
-※インストーラー版がおすすめです。zip版ではコマンドラインから作業が必要になります。
+## Type check
+
+```powershell
+uv run ty check
+```
+
+`ty` is used for static type checking.  `mypy` is intentionally not used.
+
+## Branch status
+
+Development is performed on short-lived branches and merged into `main` through
+pull requests.
+
+## Project layout
+
+```text
+src/
+└─ quickreplay/
+   ├─ app/          # application state and view models
+   ├─ application/  # headless application controller (recording/replay lifecycle)
+   ├─ configuration/# versioned JSON configuration persistence
+   ├─ input/        # input config, stream info, frame models, InputSource
+   │  └─ ndi/       # NDI discovery, receiver and frame conversion
+   ├─ recording/    # segment/session models, segment recorder, worker protocol
+   ├─ replay/       # replay models, asset builder, remux and mpv controller
+   ├─ worker/       # recorder worker process, pipeline and frame queues
+   ├─ ui/           # Flet 1.0 desktop UI (bootstrap, bridge, session, view)
+   └─ units.py      # nanosecond / Fraction helpers
+tests/
+pyproject.toml
+uv.lock
+```
+
+## License
+
+See `LICENSE`.  Third-party license notices are listed in
+`LICENSE_ThirdParty.md`.
