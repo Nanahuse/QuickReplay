@@ -200,7 +200,7 @@ class MainView:
 
         # Setup settings fields (validation and persistence remain in UiSession).
         self.settings_buffer_field = ft.TextField(label="Buffer duration", width=180)
-        self.settings_mpv_field = ft.TextField(label="mpv executable", width=260)
+        self.settings_mpv_field = ft.TextField(label="mpv executable")
         self.settings_error_text = ft.Text("", color=ft.Colors.RED, visible=False)
         self.setup_status_text = ft.Text("", color=ft.Colors.BLUE_GREY, visible=False)
         self.setup_error_text = ft.Text("", color=ft.Colors.RED, visible=False)
@@ -230,6 +230,7 @@ class MainView:
             spacing=6,
             tight=True,
             expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         self.settings_row = ft.Row(
             controls=[recording_settings, replay_settings],
@@ -253,9 +254,21 @@ class MainView:
             expand=True,
             scroll=ft.ScrollMode.AUTO,
         )
+        left_actions = ft.Container(
+            expand=True,
+            content=ft.Row(
+                controls=[self.settings_apply_button],
+                alignment=ft.MainAxisAlignment.START,
+            ),
+        )
+        right_actions = ft.Row(
+            controls=[self.start_button],
+            alignment=ft.MainAxisAlignment.END,
+            expand=True,
+        )
         self.setup_actions = ft.Row(
-            controls=[self.settings_apply_button, self.start_button],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[left_actions, right_actions],
+            spacing=self.settings_row.spacing,
             height=52,
         )
         self.setup_section = ft.Column(

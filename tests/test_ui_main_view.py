@@ -88,11 +88,26 @@ def test_setup_is_ndi_only_and_compact(tmp_path: Path) -> None:
     assert view.settings_row in view.setup_body.controls
     assert view.setup_actions in view.setup_section.controls
     assert view.setup_actions not in view.setup_body.controls
+    assert len(view.setup_actions.controls) == 2
+    assert view.setup_actions.spacing == view.settings_row.spacing
+    assert view.setup_actions.alignment != ft.MainAxisAlignment.SPACE_BETWEEN
     assert view.setup_body.expand is True
     assert view.setup_section.expand is True
     assert view.control.expand is True
 
     recording, replay = (cast(ft.Column, control) for control in view.settings_row.controls)
+    left_actions = cast(ft.Container, view.setup_actions.controls[0])
+    right_actions = cast(ft.Row, view.setup_actions.controls[1])
+    assert left_actions.expand is True
+    assert right_actions.expand is True
+    left_action_row = cast(ft.Row, left_actions.content)
+    assert left_action_row.controls == [view.settings_apply_button]
+    assert left_action_row.alignment == ft.MainAxisAlignment.START
+    assert right_actions.expand is True
+    assert right_actions.controls == [view.start_button]
+    assert right_actions.alignment == ft.MainAxisAlignment.END
+    assert replay.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
+    assert view.settings_mpv_field.expand is not True
     assert cast(ft.Text, recording.controls[0]).value == "Recording"
     assert cast(ft.Text, replay.controls[0]).value == "Replay"
     assert (
