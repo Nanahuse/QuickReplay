@@ -6,6 +6,7 @@ own handlers with a stub page.
 """
 
 import asyncio
+import multiprocessing
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
@@ -249,12 +250,14 @@ def test_discovery_status_is_limited_to_input_row(tmp_path: Path) -> None:
     assert view.status_text.visible is False
 
 
-def test_about_dialog_preserves_setup_draft_and_application_state(tmp_path: Path) -> None:
+def test_about_process_starts_once_and_restarts_after_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     session, bridge = _session(tmp_path)
     inputs = (NdiInputDescriptor("Studio NDI"),)
     asyncio.run(_discover(session, bridge, inputs))
     session.select("ndi:Studio NDI")
-    view, page = _view(session)
+    view, _page = _view(session)
     view.settings_buffer_field.value = "45"
     view.settings_mpv_field.value = "custom-mpv.exe"
     draft_before = view._settings_draft()
@@ -266,11 +269,61 @@ def test_about_dialog_preserves_setup_draft_and_application_state(tmp_path: Path
         bridge.replay_requests,
     )
 
+    class FakeEvent:
+        def __init__(self) -> None:
+            self.set_calls = 0
+
+        def set(self) -> None:
+            self.set_calls += 1
+
+    class FakeProcess:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+            self.alive = False
+            self.started = 0
+            self.joined = 0
+
+        def start(self) -> None:
+            self.started += 1
+            self.alive = True
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float = 0) -> None:
+            self.joined += 1
+
+    event = FakeEvent()
+    processes: list[FakeProcess] = []
+
+    class FakeContext:
+        def Event(self) -> FakeEvent:
+            return event
+
+        def Process(self, **kwargs: object) -> FakeProcess:
+            process = FakeProcess(**kwargs)
+            processes.append(process)
+            return process
+
+    monkeypatch.setattr(multiprocessing, "get_context", lambda _method: FakeContext())
     view._on_about(cast(ft.Event, object()))
 
-    assert len(page.shown) == 1
-    dialog = cast(ft.AlertDialog, page.shown[0])
-    assert dialog.modal is True
+    process = processes[0]
+    assert process.started == 1
+    assert process.kwargs["name"] == "QuickReplayAbout"
+    assert process.kwargs["args"] == (event,)
+    assert getattr(process.kwargs["target"], "__name__", None) == "run_about_window"
+    view._on_about(cast(ft.Event, object()))
+    assert process.started == 1
+
+    process.alive = False
+    first_process = process
+    view._on_about(cast(ft.Event, object()))
+    assert first_process.started == 1
+    assert first_process.joined == 1
+    assert view._about_process is not first_process
+    assert view._about_process is not None
+    assert processes[1].started == 1
     assert view._settings_draft() == draft_before
     assert session.view_state().state is state_before.state
     assert session.view_state().selected_key == selected_before
@@ -280,25 +333,19 @@ def test_about_dialog_preserves_setup_draft_and_application_state(tmp_path: Path
         bridge.replay_requests,
     ) == bridge_calls_before
 
-    view._on_about_close(cast(ft.Event, object()))
-
-    assert page.shown == []
-    assert view._settings_draft() == draft_before
-    assert session.view_state().state is state_before.state
-    assert session.view_state().selected_key == selected_before
+    assert event.set_calls == 0
 
 
 def test_about_is_disabled_outside_idle_setup_state(tmp_path: Path) -> None:
     session, bridge = _session(tmp_path)
     bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RECORDING)
     asyncio.run(session.poll())
-    view, page = _view(session)
+    view, _page = _view(session)
 
     view.render(session.view_state())
     view._on_about(cast(ft.Event, object()))
 
     assert view.about_button.disabled is True
-    assert page.shown == []
 
 
 def test_replay_transport_buttons_share_fixed_dimensions_and_style(tmp_path: Path) -> None:

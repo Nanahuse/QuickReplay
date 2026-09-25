@@ -7,7 +7,7 @@ window is created.
 import asyncio
 import threading
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import flet as ft
 import pytest
@@ -297,6 +297,58 @@ def test_double_close_runs_shutdown_once(tmp_path: Path) -> None:
         assert bridge.shutdown_count == 1
         assert bridge.close_count == 1
         assert page.destroyed == 1
+
+    asyncio.run(scenario())
+
+
+def test_main_close_signals_and_joins_about_process_after_core_shutdown(tmp_path: Path) -> None:
+    class FakeEvent:
+        def __init__(self) -> None:
+            self.signaled = False
+
+        def set(self) -> None:
+            self.signaled = True
+
+    class FakeProcess:
+        def __init__(self, event: FakeEvent, order: list[str]) -> None:
+            self.event = event
+            self.order = order
+            self.alive = True
+            self.join_timeouts: list[float] = []
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float = 0) -> None:
+            self.join_timeouts.append(timeout)
+            self.order.append("about_join")
+            if self.event.signaled:
+                self.alive = False
+
+        def terminate(self) -> None:
+            self.order.append("about_terminate")
+            self.alive = False
+
+        def kill(self) -> None:
+            self.order.append("about_kill")
+            self.alive = False
+
+    async def scenario() -> None:
+        view, _session, bridge, _page = _make(tmp_path)
+        event = FakeEvent()
+        process = FakeProcess(event, bridge.order)
+        view._about_shutdown_event = cast(Any, event)
+        view._about_process = cast(Any, process)
+
+        await view.close()
+
+        assert bridge.order.index("shutdown") < bridge.order.index("about_join")
+        assert event.signaled
+        assert process.join_timeouts == [2.0]
+        assert "about_terminate" not in bridge.order
+        assert "about_kill" not in bridge.order
+        assert view._about_process is None
+        assert view._about_shutdown_event is None
 
     asyncio.run(scenario())
 

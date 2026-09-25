@@ -7,17 +7,18 @@ session; the view holds only transient widget state.
 """
 
 import asyncio
+import multiprocessing
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, auto
-from typing import cast
+from typing import Any, cast
 
 import flet as ft
 
 from quickreplay.app.state import ApplicationState
-from quickreplay.ui.about import build_about_dialog
+from quickreplay.ui.about_window import run_about_window
 from quickreplay.ui.presentation import format_duration_ns
 from quickreplay.ui.replay_repeat import ReplayActionRepeater
 from quickreplay.ui.session import (
@@ -113,6 +114,8 @@ class MainView:
         self._session_lost = False
         self._close_started = False
         self._poll_task: asyncio.Task[None] | None = None
+        self._about_process: Any | None = None
+        self._about_shutdown_event: Any | None = None
         self._starting = False
         self._start_done = asyncio.Event()
         self._replay_repeater = ReplayActionRepeater()
@@ -422,6 +425,10 @@ class MainView:
                 await self.session.shutdown()
             except Exception as exc:  # noqa: BLE001 - keep cleaning up
                 errors.append(exc)
+            try:
+                await self._stop_about_process()
+            except Exception as exc:  # noqa: BLE001 - continue window teardown
+                errors.append(exc)
         finally:
             self._lifecycle = ViewLifecycle.CLOSED
         if destroy_window:
@@ -444,6 +451,28 @@ class MainView:
             await task
         except asyncio.CancelledError:
             pass
+
+    async def _stop_about_process(self) -> None:
+        process = self._about_process
+        shutdown_event = self._about_shutdown_event
+        self._about_process = None
+        self._about_shutdown_event = None
+        if process is None:
+            return
+        if shutdown_event is not None:
+            shutdown_event.set()
+        if not process.is_alive():
+            await asyncio.to_thread(process.join, 0)
+            return
+        await asyncio.to_thread(process.join, 2.0)
+        if process.is_alive():
+            process.terminate()
+            await asyncio.to_thread(process.join, 1.0)
+        if process.is_alive():
+            process.kill()
+            await asyncio.to_thread(process.join, 1.0)
+        if process.is_alive():
+            raise RuntimeError("About process did not exit during application shutdown")
 
     async def _destroy_window(self) -> None:
         if self._session_lost:
@@ -748,14 +777,21 @@ class MainView:
             return
         if self.session.view_state().state is not ApplicationState.IDLE:
             return
-        self.page.show_dialog(build_about_dialog(self._on_about_close, self.page.update))
-        self._update_page()
+        if self._about_process is not None:
+            if self._about_process.is_alive():
+                return
+            self._about_process.join(timeout=0)
 
-    def _on_about_close(self, event: ft.Event) -> None:
-        if not self.is_active:
-            return
-        self.page.pop_dialog()
-        self._update_page()
+        context = multiprocessing.get_context("spawn")
+        shutdown_event = context.Event()
+        process = context.Process(
+            target=run_about_window,
+            args=(shutdown_event,),
+            name="QuickReplayAbout",
+        )
+        process.start()
+        self._about_shutdown_event = shutdown_event
+        self._about_process = process
 
     def _on_refresh(self, event: ft.Event) -> None:
         self._run_task(self._refresh)
