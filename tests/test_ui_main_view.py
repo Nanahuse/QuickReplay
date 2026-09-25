@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import cast
 
 import flet as ft
+import pytest
 from fake_ui import FakeBridge
 
 from quickreplay.app.state import ApplicationState
@@ -19,6 +20,7 @@ from quickreplay.application.events import InputsChanged
 from quickreplay.application.models import ApplicationSnapshot
 from quickreplay.configuration.models import QuickReplayConfig
 from quickreplay.configuration.store import ConfigurationStore
+from quickreplay.input.models import NdiInputDescriptor
 from quickreplay.replay.models import ReplayAsset
 from quickreplay.ui.main_view import (
     REPLAY_CONTENT_WIDTH,
@@ -101,15 +103,17 @@ def test_setup_is_ndi_only_and_compact(tmp_path: Path) -> None:
     assert left_actions.expand is True
     assert right_actions.expand is True
     left_action_row = cast(ft.Row, left_actions.content)
-    assert left_action_row.controls == [view.settings_apply_button]
+    assert left_action_row.controls == [view.about_button]
     assert left_action_row.alignment == ft.MainAxisAlignment.START
     assert right_actions.expand is True
-    assert right_actions.controls == [view.start_button]
+    assert right_actions.controls == [view.settings_apply_button, view.start_button]
     assert right_actions.alignment == ft.MainAxisAlignment.END
     assert replay.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
     assert view.settings_mpv_field.expand is not True
     assert cast(ft.Text, recording.controls[0]).value == "Recording"
     assert cast(ft.Text, replay.controls[0]).value == "Replay"
+    assert view.about_button.icon == ft.Icons.INFO_OUTLINE
+    assert view.about_button.tooltip == "About"
     assert (
         sum(
             child.value.startswith("Restart required")
@@ -192,17 +196,28 @@ def test_replay_controls_are_visible_and_prioritized(tmp_path: Path) -> None:
     assert WINDOW_SIZES["recording"][0] == WINDOW_SIZES["replay"][0]
 
 
-def test_recording_header_uses_shared_navigation_and_replay_action(tmp_path: Path) -> None:
+@pytest.mark.parametrize("state", [ApplicationState.RECORDING, ApplicationState.REPLAY])
+def test_about_entry_is_not_in_session_screens(tmp_path: Path, state: ApplicationState) -> None:
     session, bridge = _session(tmp_path)
-    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RECORDING)
+    bridge.snapshot_value = ApplicationSnapshot(
+        state=state,
+        replay_asset=(
+            ReplayAsset(Path("replay.mkv"), 10_000_000_000, Fraction(60, 1))
+            if state is ApplicationState.REPLAY
+            else None
+        ),
+    )
     asyncio.run(session.poll())
     view, _page = _view(session)
 
     view.render(session.view_state())
 
+    assert view.setup_section.visible is False
     assert isinstance(view.setup_button, ft.IconButton)
-    assert view.mode_button.content == "Replay"
-    assert view.state_text.value == "● REC"
+    assert view.about_button not in view.session_section.controls
+    if state is ApplicationState.RECORDING:
+        assert view.mode_button.content == "Replay"
+        assert view.state_text.value == "● REC"
 
 
 def test_resuming_uses_recording_size_before_recording_starts(tmp_path: Path) -> None:
@@ -232,6 +247,58 @@ def test_discovery_status_is_limited_to_input_row(tmp_path: Path) -> None:
     assert view.refresh_button.disabled is True
     assert view.footer.visible is False
     assert view.status_text.visible is False
+
+
+def test_about_dialog_preserves_setup_draft_and_application_state(tmp_path: Path) -> None:
+    session, bridge = _session(tmp_path)
+    inputs = (NdiInputDescriptor("Studio NDI"),)
+    asyncio.run(_discover(session, bridge, inputs))
+    session.select("ndi:Studio NDI")
+    view, page = _view(session)
+    view.settings_buffer_field.value = "45"
+    view.settings_mpv_field.value = "custom-mpv.exe"
+    draft_before = view._settings_draft()
+    state_before = session.view_state()
+    selected_before = state_before.selected_key
+    bridge_calls_before = (
+        len(bridge.discovery_requests),
+        len(bridge.recording_configs),
+        bridge.replay_requests,
+    )
+
+    view._on_about(cast(ft.Event, object()))
+
+    assert len(page.shown) == 1
+    dialog = cast(ft.AlertDialog, page.shown[0])
+    assert dialog.modal is True
+    assert view._settings_draft() == draft_before
+    assert session.view_state().state is state_before.state
+    assert session.view_state().selected_key == selected_before
+    assert (
+        len(bridge.discovery_requests),
+        len(bridge.recording_configs),
+        bridge.replay_requests,
+    ) == bridge_calls_before
+
+    view._on_about_close(cast(ft.Event, object()))
+
+    assert page.shown == []
+    assert view._settings_draft() == draft_before
+    assert session.view_state().state is state_before.state
+    assert session.view_state().selected_key == selected_before
+
+
+def test_about_is_disabled_outside_idle_setup_state(tmp_path: Path) -> None:
+    session, bridge = _session(tmp_path)
+    bridge.snapshot_value = ApplicationSnapshot(state=ApplicationState.RECORDING)
+    asyncio.run(session.poll())
+    view, page = _view(session)
+
+    view.render(session.view_state())
+    view._on_about(cast(ft.Event, object()))
+
+    assert view.about_button.disabled is True
+    assert page.shown == []
 
 
 def test_replay_transport_buttons_share_fixed_dimensions_and_style(tmp_path: Path) -> None:

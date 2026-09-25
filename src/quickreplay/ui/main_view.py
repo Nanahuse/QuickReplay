@@ -17,6 +17,7 @@ from typing import cast
 import flet as ft
 
 from quickreplay.app.state import ApplicationState
+from quickreplay.ui.about import build_about_dialog
 from quickreplay.ui.presentation import format_duration_ns
 from quickreplay.ui.replay_repeat import ReplayActionRepeater
 from quickreplay.ui.session import (
@@ -207,6 +208,11 @@ class MainView:
         self.settings_apply_button = ft.FilledButton(
             content="Apply", on_click=self._on_settings_apply
         )
+        self.about_button = ft.IconButton(
+            icon=ft.Icons.INFO_OUTLINE,
+            tooltip="About",
+            on_click=self._on_about,
+        )
 
         self.setup_button = ft.IconButton(
             icon=ft.Icons.ARROW_BACK,
@@ -257,13 +263,14 @@ class MainView:
         left_actions = ft.Container(
             expand=True,
             content=ft.Row(
-                controls=[self.settings_apply_button],
+                controls=[self.about_button],
                 alignment=ft.MainAxisAlignment.START,
             ),
         )
         right_actions = ft.Row(
-            controls=[self.start_button],
+            controls=[self.settings_apply_button, self.start_button],
             alignment=ft.MainAxisAlignment.END,
+            spacing=8,
             expand=True,
         )
         self.setup_actions = ft.Row(
@@ -552,6 +559,7 @@ class MainView:
         self.start_button.disabled = not state.controls.start_enabled
         setup_visible = state.state in (ApplicationState.IDLE, ApplicationState.STARTING)
         self.setup_section.visible = setup_visible
+        self.about_button.disabled = state.state is not ApplicationState.IDLE
         self.session_section.visible = not setup_visible
         self.input_section.visible = setup_visible
         self.recording_section.visible = state.state is ApplicationState.RECORDING
@@ -734,6 +742,20 @@ class MainView:
             return
         self.session.select(self.source_dropdown.value)
         self._refresh_view()
+
+    def _on_about(self, event: ft.Event) -> None:
+        if not self.is_active:
+            return
+        if self.session.view_state().state is not ApplicationState.IDLE:
+            return
+        self.page.show_dialog(build_about_dialog(self._on_about_close))
+        self._update_page()
+
+    def _on_about_close(self, event: ft.Event) -> None:
+        if not self.is_active:
+            return
+        self.page.pop_dialog()
+        self._update_page()
 
     def _on_refresh(self, event: ft.Event) -> None:
         self._run_task(self._refresh)
