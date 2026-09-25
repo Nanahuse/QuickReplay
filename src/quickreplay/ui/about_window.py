@@ -38,4 +38,8 @@ async def _watch_parent_shutdown(page: ft.Page, shutdown_event: Any) -> None:
 
 def run_about_window(shutdown_event: Any) -> None:
     """Pickleable multiprocessing entry point for the native About window."""
-    ft.run(lambda page: about_page(page, shutdown_event), view=ft.AppView.FLET_APP)
+
+    async def main(page: ft.Page) -> None:
+        await about_page(page, shutdown_event)
+
+    ft.run(main, view=ft.AppView.FLET_APP)
