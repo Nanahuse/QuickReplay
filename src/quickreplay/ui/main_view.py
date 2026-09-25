@@ -7,12 +7,15 @@ session; the view holds only transient widget state.
 """
 
 import asyncio
+import subprocess
+import sys
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, auto
-from typing import cast
+from pathlib import Path
+from typing import Any, cast
 
 import flet as ft
 
@@ -112,6 +115,7 @@ class MainView:
         self._session_lost = False
         self._close_started = False
         self._poll_task: asyncio.Task[None] | None = None
+        self._about_process: Any | None = None
         self._starting = False
         self._start_done = asyncio.Event()
         self._replay_repeater = ReplayActionRepeater()
@@ -207,6 +211,11 @@ class MainView:
         self.settings_apply_button = ft.FilledButton(
             content="Apply", on_click=self._on_settings_apply
         )
+        self.about_button = ft.IconButton(
+            icon=ft.Icons.INFO_OUTLINE,
+            tooltip="About",
+            on_click=self._on_about,
+        )
 
         self.setup_button = ft.IconButton(
             icon=ft.Icons.ARROW_BACK,
@@ -257,13 +266,14 @@ class MainView:
         left_actions = ft.Container(
             expand=True,
             content=ft.Row(
-                controls=[self.settings_apply_button],
+                controls=[self.about_button],
                 alignment=ft.MainAxisAlignment.START,
             ),
         )
         right_actions = ft.Row(
-            controls=[self.start_button],
+            controls=[self.settings_apply_button, self.start_button],
             alignment=ft.MainAxisAlignment.END,
+            spacing=8,
             expand=True,
         )
         self.setup_actions = ft.Row(
@@ -415,6 +425,10 @@ class MainView:
                 await self.session.shutdown()
             except Exception as exc:  # noqa: BLE001 - keep cleaning up
                 errors.append(exc)
+            try:
+                await self._stop_about_process()
+            except Exception as exc:  # noqa: BLE001 - continue window teardown
+                errors.append(exc)
         finally:
             self._lifecycle = ViewLifecycle.CLOSED
         if destroy_window:
@@ -437,6 +451,28 @@ class MainView:
             await task
         except asyncio.CancelledError:
             pass
+
+    async def _stop_about_process(self) -> None:
+        process = self._about_process
+        self._about_process = None
+        if process is None:
+            return
+        if process.poll() is not None:
+            return
+        try:
+            await asyncio.to_thread(process.wait, timeout=2.0)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        process.terminate()
+        try:
+            await asyncio.to_thread(process.wait, timeout=1.0)
+            return
+        except subprocess.TimeoutExpired:
+            process.kill()
+            await asyncio.to_thread(process.wait, timeout=1.0)
+        if process.poll() is None:
+            raise RuntimeError("About process did not exit during application shutdown")
 
     async def _destroy_window(self) -> None:
         if self._session_lost:
@@ -552,6 +588,7 @@ class MainView:
         self.start_button.disabled = not state.controls.start_enabled
         setup_visible = state.state in (ApplicationState.IDLE, ApplicationState.STARTING)
         self.setup_section.visible = setup_visible
+        self.about_button.disabled = state.state is not ApplicationState.IDLE
         self.session_section.visible = not setup_visible
         self.input_section.visible = setup_visible
         self.recording_section.visible = state.state is ApplicationState.RECORDING
@@ -734,6 +771,23 @@ class MainView:
             return
         self.session.select(self.source_dropdown.value)
         self._refresh_view()
+
+    def _on_about(self, event: ft.Event) -> None:
+        if not self.is_active:
+            return
+        if self.session.view_state().state is not ApplicationState.IDLE:
+            return
+        if self._about_process is not None:
+            if self._about_process.poll() is None:
+                return
+
+        is_packaged = Path(sys.argv[0]).suffix.casefold() == ".exe"
+        command = (
+            [sys.executable, "--quickreplay-about"]
+            if is_packaged
+            else [sys.executable, "-m", "quickreplay.ui.about_window"]
+        )
+        self._about_process = subprocess.Popen(command)
 
     def _on_refresh(self, event: ft.Event) -> None:
         self._run_task(self._refresh)
