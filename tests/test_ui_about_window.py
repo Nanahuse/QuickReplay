@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import os
 from typing import Any, cast
 
 import flet as ft
@@ -70,3 +71,20 @@ def test_about_process_passes_a_coroutine_handler_to_flet(monkeypatch) -> None:
     assert page.window.visible is True
     assert page.controls
     assert page.tasks == [(about_window._watch_parent_shutdown, (page, shutdown_event))]
+
+
+def test_about_process_clears_embedded_runtime_environment(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run(main, *, view) -> None:
+        captured["main"] = main
+        captured["view"] = view
+
+    monkeypatch.setattr(about_window.ft, "run", fake_run)
+    monkeypatch.setenv("FLET_PLATFORM", "windows")
+    monkeypatch.setenv("FLET_DART_BRIDGE_PORT", "12345")
+
+    about_window.run_about_window(object())
+
+    assert "FLET_PLATFORM" not in os.environ
+    assert "FLET_DART_BRIDGE_PORT" not in os.environ
