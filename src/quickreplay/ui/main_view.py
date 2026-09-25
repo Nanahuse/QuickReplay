@@ -265,6 +265,7 @@ class MainView:
         )
         right_actions = ft.Container(
             expand=True,
+            alignment=ft.Alignment.CENTER_LEFT,
             content=ft.Container(
                 width=SETUP_REPLAY_FIELD_WIDTH,
                 content=ft.Row(

@@ -102,6 +102,7 @@ def test_setup_is_ndi_only_and_compact(tmp_path: Path) -> None:
     )
     assert left_actions.expand is True
     assert right_actions.expand is True
+    assert right_actions.alignment == ft.Alignment.CENTER_LEFT
     left_action_row = cast(ft.Row, left_actions.content)
     assert left_action_row.controls == [view.settings_apply_button]
     assert left_action_row.alignment == ft.MainAxisAlignment.START
