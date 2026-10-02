@@ -5,9 +5,10 @@ window is created.
 """
 
 import asyncio
+import subprocess
 import threading
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import flet as ft
 import pytest
@@ -298,6 +299,88 @@ def test_double_close_runs_shutdown_once(tmp_path: Path) -> None:
         assert bridge.close_count == 1
         assert page.destroyed == 1
 
+    asyncio.run(scenario())
+
+
+def test_main_close_waits_for_about_process_after_core_shutdown(tmp_path: Path) -> None:
+    class FakeProcess:
+        def __init__(self, order: list[str]) -> None:
+            self.order = order
+            self.returncode: int | None = None
+            self.wait_timeouts: list[float] = []
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            self.wait_timeouts.append(timeout)
+            self.order.append("about_wait")
+            self.returncode = 0
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.order.append("about_terminate")
+            self.returncode = 0
+
+        def kill(self) -> None:
+            self.order.append("about_kill")
+            self.returncode = -9
+
+    async def scenario() -> None:
+        view, _session, bridge, _page = _make(tmp_path)
+        process = FakeProcess(bridge.order)
+        view._about_process = cast(Any, process)
+        await view.close()
+
+        assert bridge.order.index("shutdown") < bridge.order.index("about_wait")
+        assert process.wait_timeouts == [2.0]
+        assert "about_terminate" not in bridge.order
+        assert "about_kill" not in bridge.order
+        assert view._about_process is None
+
+    asyncio.run(scenario())
+
+
+def test_about_process_shutdown_terminates_process_when_graceful_wait_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.wait_timeouts: list[float] = []
+            self.terminated = False
+            self.killed = False
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            self.wait_timeouts.append(timeout)
+            if not self.terminated:
+                raise subprocess.TimeoutExpired("about", timeout)
+            self.returncode = 0
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+    async def scenario() -> None:
+        view, _session, _bridge, _page = _make(tmp_path)
+        process = FakeProcess()
+        view._about_process = cast(Any, process)
+        await view.close()
+        assert process.terminated
+        assert not process.killed
+        assert process.wait_timeouts == [2.0, 1.0]
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
     asyncio.run(scenario())
 
 
